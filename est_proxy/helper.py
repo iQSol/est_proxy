@@ -11,6 +11,8 @@ import base64
 import textwrap
 import OpenSSL
 import pytz
+from cryptography import x509
+from cryptography.x509.oid import NameOID
 from tlslite import SessionCache, HandshakeSettings, VerifierDB
 from tlslite.constants import CipherSuite, HashAlgorithm, SignatureAlgorithm, GroupName, SignatureScheme
 
@@ -41,6 +43,17 @@ def b64_url_recode(logger, string):
     string += "="*padding_factor
     result = str(string).translate(dict(zip(map(ord, u'-_'), u'+/')))
     return result
+
+def getCertificateInformation(pem_data):
+
+    # Load the certificate
+    cert = x509.load_pem_x509_certificate(pem_data.encode('utf-8'))
+
+    return {
+        "commonName": cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
+        "issueDate": cert.not_valid_before_utc,
+        "expireDate": cert.not_valid_after_utc
+        }
 
 def build_pem_file(logger, existing, certificate, wrap, csr=False):
     """ construct pem_file """

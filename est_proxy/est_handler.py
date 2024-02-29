@@ -6,8 +6,9 @@ import subprocess
 import importlib
 from http.server import BaseHTTPRequestHandler
 # pylint: disable=E0401
-from est_proxy.helper import config_load, ca_handler_get, logger_setup # ,b64_encode, cert_san_get, cert_extensions_get, cert_eku_get
+from est_proxy.helper import config_load, ca_handler_get, logger_setup, getCertificateInformation # ,b64_encode, cert_san_get, cert_extensions_get, cert_eku_get
 from est_proxy.version import __version__
+from est_proxy.database import insertCertficate
 
 class ESTSrvHandler(BaseHTTPRequestHandler):
     """ serverside of est protocol handler """
@@ -111,6 +112,12 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                 # get certs
                 (error, cert, _poll_identifier) = ca_handler.enroll(csr)
                 if not error and cert:
+                    certInformation = getCertificateInformation(cert)
+                    insertCertficate('/usr/local/est_proxy/data/est_proxy.db',
+                                     certInformation['commonName'],
+                                     certInformation['issueDate'],
+                                     certInformation['expireDate']
+                                     )
                     cert_pkcs7 = self._pkcs7_convert(cert, pkcs7_clean=True)
                 else:
                     if not cert:

@@ -1,5 +1,4 @@
-FROM ubuntu:20.04
-LABEL maintainer="grindelsack@gmail.com"
+FROM ubuntu:22.04
 
 RUN apt-get update
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
@@ -16,7 +15,7 @@ RUN pip3 install -r /tmp/requirements.txt
 
 # patch tlslite
 COPY examples/Docker/est_proxy/tlslite-01.patch /tmp/tlslite-01.patch
-RUN patch /usr/local/lib/python3.8/dist-packages/tlslite/tlsconnection.py /tmp/tlslite-01.patch
+RUN patch /usr/local/lib/python3.10/dist-packages/tlslite/tlsconnection.py /tmp/tlslite-01.patch
 
 # create folders for est_proxy
 RUN mkdir -p /usr/local/est_proxy/etc && \

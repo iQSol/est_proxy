@@ -4,3 +4,4 @@ configparser
 tlslite-ng==0.8.0a40
 pytz
 certsrv[ntlm]
+cryptography

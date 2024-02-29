@@ -9,6 +9,7 @@ from OpenSSL.crypto import _lib, _ffi, X509
 from certsrv import Certsrv
 # pylint: disable=E0401
 from est_proxy.helper import config_load, b64_url_recode, convert_byte_to_string
+from cryptography.hazmat.primitives.serialization.pkcs7 import *
 
 def _get_certificates(self):
     """
@@ -66,26 +67,19 @@ class CAhandler(object):
     def _pkcs7_to_pem(self, pkcs7_content, outform='string'):
         """ convert pkcs7 to pem """
         self.logger.debug('CAhandler._pkcs7_to_pem()')
-        for filetype in (crypto.FILETYPE_PEM, crypto.FILETYPE_ASN1):
-            try:
-                pkcs7 = crypto.load_pkcs7_data(filetype, pkcs7_content)
-                break
-            except crypto.Error as _err:
-                pkcs7 = None
-                # print(err)
+        try:
+            pkcs7s = load_pem_pkcs7_certificates(pkcs7_content.encode('utf-8'))
+        except:
+            pkcs7s = None
 
         cert_pem_list = []
-        if pkcs7:
-            # convert cert pkcs#7 to pem
-            cert_list = _get_certificates(pkcs7)
-            for cert in cert_list:
-                cert_pem_list.append(convert_byte_to_string(crypto.dump_certificate(crypto.FILETYPE_PEM, cert)))
+        if pkcs7s:
+            for pkcs7 in pkcs7s:
+                cert_pem_list.append(pkcs7.public_bytes(encoding=serialization.Encoding.PEM).decode())
 
         # define output format
         if outform == 'string':
             result = ''.join(cert_pem_list)
-        elif outform == 'list':
-            result = cert_pem_list
         else:
             result = None
 
