@@ -51,8 +51,8 @@ def getCertificateInformation(pem_data):
 
     return {
         "commonName": cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
-        "issueDate": cert.not_valid_before_utc,
-        "expireDate": cert.not_valid_after_utc
+        "validFrom": cert.not_valid_before_utc,
+        "validTo": cert.not_valid_after_utc
         }
 
 def build_pem_file(logger, existing, certificate, wrap, csr=False):

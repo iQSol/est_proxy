@@ -21,14 +21,14 @@ def initializeDatabase(dbFile):
                     (
                     certificateId INTEGER PRIMARY KEY,
                     commonName TEXT,
-                    issueDate DATETIME,
-                    expireDate DATETIME
+                    validFrom DATETIME,
+                    validTo DATETIME
                     )
                     ''')
 
         commitAndClose(connection)
 
-def insertCertficate(dbFile, commonName, issueDate, expireDate):
+def insertCertficate(dbFile, commonName, validFrom, validTo):
     initializeDatabase(dbFile)
     connection = connectToDatabase(dbFile)
     if connection != None:
@@ -40,13 +40,13 @@ def insertCertficate(dbFile, commonName, issueDate, expireDate):
 
         if id:
             cursor.execute('''
-                        UPDATE certificates SET commonName = ?, issueDate = ?, expireDate = ? WHERE certificateId = ?
-                        ''', (commonName, issueDate, expireDate, id[0])
+                        UPDATE certificates SET commonName = ?, validFrom = ?, validTo = ? WHERE certificateId = ?
+                        ''', (commonName, validFrom, validTo , id[0])
                         )
         else:
             cursor.execute('''
-                        INSERT INTO certificates(commonName,issueDate,expireDate)
-                        VALUES (?, ?, ?)''', (commonName, issueDate, expireDate)
+                        INSERT INTO certificates(commonName,validFrom,validTo)
+                        VALUES (?, ?, ?)''', (commonName, validFrom, validTo)
                         )
         commitAndClose(connection)
 

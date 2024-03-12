@@ -115,8 +115,8 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                     certInformation = getCertificateInformation(cert)
                     insertCertficate('/usr/local/est_proxy/data/est_proxy.db',
                                      certInformation['commonName'],
-                                     certInformation['issueDate'],
-                                     certInformation['expireDate']
+                                     certInformation['validFrom'],
+                                     certInformation['validTo']
                                      )
                     cert_pkcs7 = self._pkcs7_convert(cert, pkcs7_clean=True)
                 else:
