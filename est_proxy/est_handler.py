@@ -10,6 +10,8 @@ from est_proxy.helper import config_load, ca_handler_get, logger_setup, getCerti
 from est_proxy.version import __version__
 from est_proxy.database import insertCertficate
 
+import base64
+
 class ESTSrvHandler(BaseHTTPRequestHandler):
     """ serverside of est protocol handler """
     cahandler = None
@@ -21,6 +23,10 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = 'est_proxy'
     sys_version = __version__
+
+    est_user = None
+    est_password = None
+    est_auth = False
 
     def __init__(self, *args, **kwargs):
         """ init function """
@@ -36,6 +42,9 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             self.logger = logger_setup(self.debug, cfg_file=self.cfg_file)
         if not self.openssl_bin:
             self._config_load()
+
+        self._load_est_credentials()
+
         try:
             # store connection settings
             self.connection = args[0]
@@ -45,6 +54,21 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             super().__init__(*args, **kwargs)
         except BaseException as err_:
             self.logger.error('ESTSrvHandler.__init__ superclass init failed: {0}'.format(err_))
+
+    def _load_est_credentials(self):
+        """ loads the credentials for accessing est with basic auth"""
+        self.logger.debug('ESTSrvHandler._load_est_credentials()')
+
+        config_dic = config_load(self.logger, cfg_file=self.cfg_file)
+
+        if 'est_user' in config_dic['Daemon']:
+            self.est_user = config_dic.get('Daemon', 'est_user', fallback=None)
+        if 'est_password' in config_dic['Daemon']:
+            self.est_password = config_dic.get('Daemon', 'est_password', fallback=None)
+        if 'est_auth' in config_dic['Daemon']:
+            self.est_auth = config_dic.getboolean('Daemon', 'est_auth', fallback=False)
+
+
 
     def _cacerts_get(self):
         """ get ca certificates """
@@ -65,16 +89,46 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         """ split ca_certs """
         self.logger.debug('ESTSrvHandler._auth_check()')
         authenticated = False
+
+        # Nginx client verification
+        if 'X-SSL-Verified' in self.headers:
+            if self.headers['X-SSL-Verified'] == 'SUCCESS':
+                self.logger.info('Client authenticated by nginx.')
+                authenticated = True
+
+        # Basic and more authentication
+        if self.est_auth and 'Authorization' in self.headers and not authenticated:
+
+            # Basic
+            if self.headers['Authorization'].startswith('Basic '):
+               authenticated = self._basic_auth_check()
+
+
         if self.connection.session.clientCertChain or self.connection.session.srpUsername:
             if self.connection.session.clientCertChain:
                 self.logger.info('Client X.509 SHA1 fingerprint: {0}'.format(self.connection.session.clientCertChain.getFingerprint()))
-                # cert_bin = b64_encode(self.logger, self.connection.session.clientCertChain.__dict__['x509List'][0].writeBytes())
-                # serial = cert_eku_get(self.logger, cert_bin)
             else:
                 self.logger.info('Client SRP username: {0}'.format(self.connection.session.srpUsername))
             authenticated = True
+
         self.logger.debug('ESTSrvHandler._auth_check() ended with: {0}'.format(authenticated))
+
         return authenticated
+
+    def _basic_auth_check(self):
+        result = False
+
+        type, content = self.headers['Authorization'].split()
+        decoded_credentials_bytes = base64.b64decode(content)
+        credentials = decoded_credentials_bytes.decode('utf-8')
+
+        username, password = credentials.split(':')
+
+        if self.est_user == username and self.est_password == password:
+            self.logger.info('Client verified with basic auth.')
+            result = True
+
+        return result
 
     def _cacerts_split(self, ca_certs):
         """ split ca_certs """
@@ -287,7 +341,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         encoding = None
         code = 400
 
-        # check if connection is poperly authenticated
+        # check if connection is properly authenticated
         connection_authenticated = self._auth_check()
 
         if connection_authenticated:
