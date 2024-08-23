@@ -6,9 +6,14 @@ import subprocess
 import importlib
 from http.server import BaseHTTPRequestHandler
 # pylint: disable=E0401
-from est_proxy.helper import config_load, ca_handler_get, logger_setup, getCertificateInformation # ,b64_encode, cert_san_get, cert_extensions_get, cert_eku_get
+from est_proxy.helper import config_load, ca_handler_get, logger_setup, get_certificate_information
+from est_proxy.database import Database
+from hashlib import sha512
+from re import search
+
 from est_proxy.version import __version__
-from est_proxy.database import insertCertficate
+from cryptography import x509
+from cryptography.x509.oid import NameOID
 
 import base64
 
@@ -20,13 +25,11 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
     logger = None
     openssl_bin = None
     connection = None
+    database = None
+    user = None
     protocol_version = "HTTP/1.1"
     server_version = 'est_proxy'
     sys_version = __version__
-
-    est_user = None
-    est_password = None
-    est_auth = False
 
     def __init__(self, *args, **kwargs):
         """ init function """
@@ -43,7 +46,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         if not self.openssl_bin:
             self._config_load()
 
-        self._load_est_credentials()
+        self.database = Database('/usr/local/est_proxy/data/est_proxy.db')
 
         try:
             # store connection settings
@@ -54,21 +57,6 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             super().__init__(*args, **kwargs)
         except BaseException as err_:
             self.logger.error('ESTSrvHandler.__init__ superclass init failed: {0}'.format(err_))
-
-    def _load_est_credentials(self):
-        """ loads the credentials for accessing est with basic auth"""
-        self.logger.debug('ESTSrvHandler._load_est_credentials()')
-
-        config_dic = config_load(self.logger, cfg_file=self.cfg_file)
-
-        if 'est_user' in config_dic['Daemon']:
-            self.est_user = config_dic.get('Daemon', 'est_user', fallback=None)
-        if 'est_password' in config_dic['Daemon']:
-            self.est_password = config_dic.get('Daemon', 'est_password', fallback=None)
-        if 'est_auth' in config_dic['Daemon']:
-            self.est_auth = config_dic.getboolean('Daemon', 'est_auth', fallback=False)
-
-
 
     def _cacerts_get(self):
         """ get ca certificates """
@@ -85,31 +73,25 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         self.logger.debug('ESTSrvHandler._cacerts_get() ended with: {0}'.format(bool(ca_pkcs7)))
         return ca_pkcs7
 
-    def _auth_check(self):
+    def _auth_check(self, csr_data):
         """ split ca_certs """
         self.logger.debug('ESTSrvHandler._auth_check()')
         authenticated = False
 
         # Nginx client verification
         if 'X-SSL-Verified' in self.headers:
-            if self.headers['X-SSL-Verified'] == 'SUCCESS':
-                self.logger.info('Client authenticated by nginx.')
-                authenticated = True
+            authenticated = self._nginx_auth_check()
+
 
         # Basic and more authentication
-        if self.est_auth and 'Authorization' in self.headers and not authenticated:
+        if 'Authorization' in self.headers and not authenticated:
 
             # Basic
             if self.headers['Authorization'].startswith('Basic '):
                authenticated = self._basic_auth_check()
 
-
-        if self.connection.session.clientCertChain or self.connection.session.srpUsername:
-            if self.connection.session.clientCertChain:
-                self.logger.info('Client X.509 SHA1 fingerprint: {0}'.format(self.connection.session.clientCertChain.getFingerprint()))
-            else:
-                self.logger.info('Client SRP username: {0}'.format(self.connection.session.srpUsername))
-            authenticated = True
+        if authenticated and self.user:
+            authenticated = self._check_csr_data(csr_data)
 
         self.logger.debug('ESTSrvHandler._auth_check() ended with: {0}'.format(authenticated))
 
@@ -124,8 +106,36 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
 
         username, password = credentials.split(':')
 
-        if self.est_user == username and self.est_password == password:
+        user = self.database.get_user(username)
+
+        if user and sha512(password.encode()).hexdigest() == user['password']:
             self.logger.info('Client verified with basic auth.')
+            self.user = user
+            result = True
+
+        return result
+
+    def _nginx_auth_check(self):
+        result = False
+
+        if self.headers['X-SSL-Verified'] == 'SUCCESS':
+            certificate = x509.load_pem_x509_certificate(self.headers['X-CLIENT-Cert'].encode('utf-8'))
+            common_name = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+            certifcate_from_db = self.database.get_certificate(common_name)
+
+            if certifcate_from_db:
+                self.user = self.database.get_user_by_id(certifcate_from_db['user'])
+                result = True
+
+        return result
+
+    def _check_csr_data(self, csr_data) -> bool:
+        result = False
+
+        csr = x509.load_pem_x509_csr(b"-----BEGIN CERTIFICATE REQUEST-----\n" + csr_data + b"-----END CERTIFICATE REQUEST-----\n")
+        common_name = csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+
+        if search(self.user['common_name_req_ex'], common_name):
             result = True
 
         return result
@@ -166,12 +176,15 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                 # get certs
                 (error, cert, _poll_identifier) = ca_handler.enroll(csr)
                 if not error and cert:
-                    certInformation = getCertificateInformation(cert)
-                    insertCertficate('/usr/local/est_proxy/data/est_proxy.db',
-                                     certInformation['commonName'],
-                                     certInformation['validFrom'],
-                                     certInformation['validTo']
-                                     )
+                    cert_information = get_certificate_information(cert)
+
+                    self.database.insert_or_update_certificate(
+                        cert_information['common_name'],
+                        cert_information['valid_from'],
+                        cert_information['valid_to'],
+                        self.user['user_id']
+                    )
+
                     cert_pkcs7 = self._pkcs7_convert(cert, pkcs7_clean=True)
                 else:
                     if not cert:
@@ -342,7 +355,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         code = 400
 
         # check if connection is properly authenticated
-        connection_authenticated = self._auth_check()
+        connection_authenticated = self._auth_check(data)
 
         if connection_authenticated:
             if data and (self.path == '/.well-known/est/simpleenroll' or self.path == '/.well-known/est/simplereenroll'):

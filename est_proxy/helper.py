@@ -44,15 +44,15 @@ def b64_url_recode(logger, string):
     result = str(string).translate(dict(zip(map(ord, u'-_'), u'+/')))
     return result
 
-def getCertificateInformation(pem_data):
+def get_certificate_information(pem_data):
 
     # Load the certificate
     cert = x509.load_pem_x509_certificate(pem_data.encode('utf-8'))
 
     return {
-        "commonName": cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
-        "validFrom": cert.not_valid_before_utc,
-        "validTo": cert.not_valid_after_utc
+        "common_name": cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
+        "valid_from": cert.not_valid_before_utc,
+        "valid_to": cert.not_valid_after_utc
         }
 
 def build_pem_file(logger, existing, certificate, wrap, csr=False):
