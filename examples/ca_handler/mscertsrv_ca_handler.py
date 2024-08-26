@@ -45,7 +45,7 @@ def _get_certificates(self):
 class CAhandler(object):
     """ EST CA  handler """
 
-    def __init__(self, cfg_file=None, logger=None):
+    def __init__(self, cfg_file=None, logger=None, template=None):
         self.cfg_file = cfg_file
         self.logger = logger
         self.host = None
@@ -53,7 +53,7 @@ class CAhandler(object):
         self.password = None
         self.auth_method = 'basic'
         self.ca_bundle = False
-        self.template = None
+        self.template = template
 
     def __enter__(self):
         """ Makes CAhandler a Context Manager """
@@ -160,8 +160,6 @@ class CAhandler(object):
             self.user = config_dic['CAhandler']['user']
         if 'password' in config_dic['CAhandler']:
             self.password = config_dic['CAhandler']['password']
-        if 'template' in config_dic['CAhandler']:
-            self.template = config_dic['CAhandler']['template']
         if 'auth_method' in config_dic['CAhandler']:
             self.auth_method = config_dic['CAhandler']['auth_method']
         # check if we get a ca bundle for verification

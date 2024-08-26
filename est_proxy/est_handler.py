@@ -6,7 +6,7 @@ import subprocess
 import importlib
 from http.server import BaseHTTPRequestHandler
 # pylint: disable=E0401
-from est_proxy.helper import config_load, ca_handler_get, logger_setup, get_certificate_information, equal_content_list
+from est_proxy.helper import config_load, ca_handler_get, logger_setup, get_certificate_information, equal_content_list, san_check
 from est_proxy.database import Database
 from hashlib import sha512
 from re import search
@@ -143,21 +143,8 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         csr_object_dns = csr_extensions.value.get_values_for_type(x509.DNSName)
 
         # check the common name and san of the csr
-        ip_regex_match = True
-        if self.user['ip_regex']:
-           for item in csr_object_ip:
-               if not search(self.user['ip_regex'], item):
-                    ip_regex_match = False
-                    self.logger.debug("IP regex not matching.")
-                    break
-
-        dns_regex_match = True
-        if self.user['dns_regex']:
-            for item in csr_object_dns:
-               if not search(self.user['dns_regex'], item):
-                    dns_regex_match = False
-                    self.logger.debug("DNS regex not matching.")
-                    break
+        ip_regex_match = san_check(self.logger, self.user['ip_regex'], csr_object_ip)
+        dns_regex_match = san_check(self.logger, self.user['dns_regex'], csr_object_dns)
 
         if search(self.user['common_name_regex'], csr_object_common_name) and ip_regex_match and dns_regex_match:
             # checks if the client certificate for authentication and csr have the same value dns and ip address values
@@ -211,7 +198,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         self.logger.debug('ESTSrvHandler._cert_enroll()')
         cert_pkcs7 = None
         if csr:
-            with self.cahandler(self.cfg_file, self.logger) as ca_handler:
+            with self.cahandler(self.cfg_file, self.logger, self.user['template']) as ca_handler:
                 # get certs
                 (error, cert, _poll_identifier) = ca_handler.enroll(csr)
                 if not error and cert:

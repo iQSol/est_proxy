@@ -13,6 +13,7 @@ import OpenSSL
 import pytz
 from cryptography import x509
 from cryptography.x509.oid import NameOID
+from re import search
 from tlslite import SessionCache, HandshakeSettings, VerifierDB
 from tlslite.constants import CipherSuite, HashAlgorithm, SignatureAlgorithm, GroupName, SignatureScheme
 
@@ -52,6 +53,20 @@ def equal_content_list(list1: list, list2: list) -> bool:
         return True
 
     return False
+
+def san_check(logger, pattern: str, san_list: list) -> bool:
+
+    if pattern:
+        if not san_list:
+            logger.debug('SAN list empty.')
+            return False
+
+        for san_item in san_list:
+            if not search(pattern, san_item):
+                logger.debug('Pattern not matching.')
+                return False
+
+    return True
 
 def get_certificate_information(pem_data):
 

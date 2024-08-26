@@ -18,28 +18,28 @@ class Database():
         if not exists(self.db_file):
             self.__create()
 
-    def insert_user(self, username: str, password: str, common_name_regex: str, ip_regex: str = "", dns_regex: str = "") -> bool:
-        """ inserts new authentication user"""
-
-        result = False
+    def insert_or_update_user(self, username: str, password: str, template: str, common_name_regex: str, ip_regex: str = "", dns_regex: str = "") -> bool:
+        """ inserts or updates a user"""
 
         self.__connect()
         self.db_cur.execute('''SELECT user_id FROM users WHERE username = ?''', (username,))
 
         item: Any = self.db_cur.fetchone()
 
-        if not item:
+        if item:
             self.db_cur.execute('''
-                INSERT INTO users(username,password,common_name_regex,ip_regex,dns_regex)
-                VALUES (?, ?, ?, ?, ?)''', (username, sha512(password.encode()).hexdigest(), common_name_regex, ip_regex, dns_regex)
+                UPDATE users SET username = ?, password = ?, template = ?, common_name_regex = ?, ip_regex = ?, dns_regex = ? WHERE user_id = ?
+                ''', (username, sha512(password.encode()).hexdigest(), template, common_name_regex, ip_regex, dns_regex, item['user_id'])
             )
-            result = True
         else:
-            print(f"User {username} already exists.")
+            self.db_cur.execute('''
+                INSERT INTO users(username,password,template,common_name_regex,ip_regex,dns_regex)
+                VALUES (?, ?, ?, ?, ?, ?)''', (username, sha512(password.encode()).hexdigest(), template, common_name_regex, ip_regex, dns_regex)
+            )
 
         self.__commit_and_close()
 
-        return result
+        return True
 
     def delete_user(self, username: str):
         """ deletes a authentication user """
@@ -157,6 +157,7 @@ class Database():
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             password TEXT,
+            template TEXT,
             common_name_regex TEXT,
             ip_regex TEXT,
             dns_regex TEXT
