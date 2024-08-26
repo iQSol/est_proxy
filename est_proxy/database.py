@@ -18,7 +18,7 @@ class Database():
         if not exists(self.db_file):
             self.__create()
 
-    def insert_user(self, username: str, password: str, common_name_req_ex: str) -> bool:
+    def insert_user(self, username: str, password: str, common_name_regex: str, ip_regex: str = "", dns_regex: str = "") -> bool:
         """ inserts new authentication user"""
 
         result = False
@@ -30,8 +30,8 @@ class Database():
 
         if not item:
             self.db_cur.execute('''
-                INSERT INTO users(username,password,common_name_req_ex)
-                VALUES (?, ?, ?)''', (username, sha512(password.encode()).hexdigest(), common_name_req_ex)
+                INSERT INTO users(username,password,common_name_regex,ip_regex,dns_regex)
+                VALUES (?, ?, ?, ?, ?)''', (username, sha512(password.encode()).hexdigest(), common_name_regex, ip_regex, dns_regex)
             )
             result = True
         else:
@@ -157,7 +157,9 @@ class Database():
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             password TEXT,
-            common_name_req_ex TEXT
+            common_name_regex TEXT,
+            ip_regex TEXT,
+            dns_regex TEXT
             )
             ''')
 

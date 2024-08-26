@@ -44,6 +44,15 @@ def b64_url_recode(logger, string):
     result = str(string).translate(dict(zip(map(ord, u'-_'), u'+/')))
     return result
 
+def equal_content_list(list1: list, list2: list) -> bool:
+    diff1 = set(list1) - set(list2)
+    diff2 = set(list2) - set(list1)
+
+    if not diff1 and not diff2:
+        return True
+
+    return False
+
 def get_certificate_information(pem_data):
 
     # Load the certificate

@@ -6,14 +6,14 @@ import subprocess
 import importlib
 from http.server import BaseHTTPRequestHandler
 # pylint: disable=E0401
-from est_proxy.helper import config_load, ca_handler_get, logger_setup, get_certificate_information
+from est_proxy.helper import config_load, ca_handler_get, logger_setup, get_certificate_information, equal_content_list
 from est_proxy.database import Database
 from hashlib import sha512
 from re import search
 
 from est_proxy.version import __version__
 from cryptography import x509
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import NameOID, ExtensionOID
 
 import base64
 
@@ -27,6 +27,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
     connection = None
     database = None
     user = None
+    client_certificate = None
     protocol_version = "HTTP/1.1"
     server_version = 'est_proxy'
     sys_version = __version__
@@ -119,12 +120,12 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         result = False
 
         if self.headers['X-SSL-Verified'] == 'SUCCESS':
-            certificate = x509.load_pem_x509_certificate(self.headers['X-CLIENT-Cert'].encode('utf-8'))
-            common_name = certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
-            certifcate_from_db = self.database.get_certificate(common_name)
+            self.client_certificate = x509.load_pem_x509_certificate(self.headers['X-CLIENT-Cert'].encode('utf-8'))
+            common_name = self.client_certificate.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+            certificate_from_db = self.database.get_certificate(common_name)
 
-            if certifcate_from_db:
-                self.user = self.database.get_user_by_id(certifcate_from_db['user'])
+            if certificate_from_db:
+                self.user = self.database.get_user_by_id(certificate_from_db['user'])
                 result = True
 
         return result
@@ -133,9 +134,47 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         result = False
 
         csr = x509.load_pem_x509_csr(b"-----BEGIN CERTIFICATE REQUEST-----\n" + csr_data + b"-----END CERTIFICATE REQUEST-----\n")
-        common_name = csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
 
-        if search(self.user['common_name_req_ex'], common_name):
+        # get the common name and san of the csr
+        csr_extensions = csr.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+
+        csr_object_common_name = csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
+        csr_object_ip = csr_extensions.value.get_values_for_type(x509.IPAddress)
+        csr_object_dns = csr_extensions.value.get_values_for_type(x509.DNSName)
+
+        # check the common name and san of the csr
+        ip_regex_match = True
+        if self.user['ip_regex']:
+           for item in csr_object_ip:
+               if not search(self.user['ip_regex'], item):
+                    ip_regex_match = False
+                    self.logger.debug("IP regex not matching.")
+                    break
+
+        dns_regex_match = True
+        if self.user['dns_regex']:
+            for item in csr_object_dns:
+               if not search(self.user['dns_regex'], item):
+                    dns_regex_match = False
+                    self.logger.debug("DNS regex not matching.")
+                    break
+
+        if search(self.user['common_name_regex'], csr_object_common_name) and ip_regex_match and dns_regex_match:
+            # checks if the client certificate for authentication and csr have the same value dns and ip address values
+            if self.client_certificate:
+                cert_object = self.client_certificate.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+
+                cert_object_ip = cert_object.value.get_values_for_type(x509.IPAddress)
+                cert_object_dns = cert_object.value.get_values_for_type(x509.DNSName)
+
+                if not equal_content_list(cert_object_ip, csr_object_ip):
+                    self.logger.debug("ip list not equal")
+                    return False
+
+                if not equal_content_list(cert_object_dns, csr_object_dns):
+                    self.logger.debug("dns list not equal")
+                    return False
+
             result = True
 
         return result
