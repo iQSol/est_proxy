@@ -125,7 +125,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             certificate_from_db = self.database.get_certificate(common_name)
 
             if certificate_from_db:
-                self.user = self.database.get_user_by_id(certificate_from_db['user'])
+                self.user = self.database.get_user_by_id(certificate_from_db['user_id'])
                 result = True
 
         return result
@@ -147,8 +147,8 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             csr_object_ip = csr_extensions.value.get_values_for_type(x509.IPAddress)
             csr_object_dns = csr_extensions.value.get_values_for_type(x509.DNSName)
         else:
-            csr_object_ip = None
-            csr_object_dns = None
+            csr_object_ip = []
+            csr_object_dns = []
 
         # check the common name and san of the csr
         ip_regex_match = san_check(self.logger, self.user['ip_regex'], csr_object_ip)
@@ -218,7 +218,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                         cert_information['common_name'],
                         cert_information['valid_from'],
                         cert_information['valid_to'],
-                        self.user['user_id']
+                        self.user['id']
                     )
 
                     cert_pkcs7 = self._pkcs7_convert(cert, pkcs7_clean=True)

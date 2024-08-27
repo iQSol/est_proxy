@@ -22,14 +22,14 @@ class Database():
         """ inserts or updates a user"""
 
         self.__connect()
-        self.db_cur.execute('''SELECT user_id FROM users WHERE username = ?''', (username,))
+        self.db_cur.execute('''SELECT id FROM users WHERE username = ?''', (username,))
 
         item: Any = self.db_cur.fetchone()
 
         if item:
             self.db_cur.execute('''
-                UPDATE users SET username = ?, password = ?, template = ?, common_name_regex = ?, ip_regex = ?, dns_regex = ? WHERE user_id = ?
-                ''', (username, sha512(password.encode()).hexdigest(), template, common_name_regex, ip_regex, dns_regex, item['user_id'])
+                UPDATE users SET username = ?, password = ?, template = ?, common_name_regex = ?, ip_regex = ?, dns_regex = ? WHERE id = ?
+                ''', (username, sha512(password.encode()).hexdigest(), template, common_name_regex, ip_regex, dns_regex, item['id'])
             )
         else:
             self.db_cur.execute('''
@@ -47,12 +47,12 @@ class Database():
         result = False
 
         self.__connect()
-        self.db_cur.execute('''SELECT user_id FROM users WHERE username = ?''', (username,))
+        self.db_cur.execute('''SELECT id FROM users WHERE username = ?''', (username,))
 
         item: Any = self.db_cur.fetchone()
 
         if item:
-            self.db_cur.execute('''DELETE FROM users WHERE user_id = ?''', (item['user_id'],))
+            self.db_cur.execute('''DELETE FROM users WHERE id = ?''', (item['id'],))
             result = True
 
         self.__commit_and_close()
@@ -74,7 +74,7 @@ class Database():
         "get one user by id"
 
         self.__connect()
-        self.db_cur.execute('''SELECT * FROM users WHERE user_id = ?''', (id,))
+        self.db_cur.execute('''SELECT * FROM users WHERE id = ?''', (id,))
 
         item: Any = self.db_cur.fetchone()
         self.__commit_and_close()
@@ -82,28 +82,24 @@ class Database():
         return item
 
 
-    def insert_or_update_certificate(self, common_name: str, valid_from: datetime, valid_to: datetime, user: int)  -> bool:
+    def insert_or_update_certificate(self, common_name: str, valid_from: datetime, valid_to: datetime, user_id: int)  -> bool:
         """ inserts a certificate"""
 
         self.__connect()
-        self.db_cur.execute('''SELECT certificate_id FROM certificates WHERE common_name = ?''', (common_name,))
+        self.db_cur.execute('''SELECT id FROM certificates WHERE common_name = ?''', (common_name,))
 
         item: Any = self.db_cur.fetchone()
 
         if item:
-            # Update
-            if not user:
-                user = item[user]
-
             self.db_cur.execute('''
-                UPDATE certificates SET common_name = ?, valid_from = ?, valid_to = ?, user = ? WHERE certificate_id = ?
-                ''', (common_name, valid_from, valid_to, user, item['certificate_id'])
+                UPDATE certificates SET common_name = ?, valid_from = ?, valid_to = ?, user_id = ? WHERE id = ?
+                ''', (common_name, valid_from, valid_to, user_id, item['id'])
             )
         else:
             # Insert
             self.db_cur.execute('''
-                INSERT INTO certificates(common_name,valid_from,valid_to,user)
-                VALUES (?, ?, ?, ?)''', (common_name, valid_from, valid_to, user)
+                INSERT INTO certificates(common_name,valid_from,valid_to,user_id)
+                VALUES (?, ?, ?, ?)''', (common_name, valid_from, valid_to, user_id)
             )
 
         self.__commit_and_close()
@@ -116,12 +112,12 @@ class Database():
         result = False
 
         self.__connect()
-        self.db_cur.execute('''SELECT certificate_id FROM certificates WHERE common_name = ?''', (common_name,))
+        self.db_cur.execute('''SELECT id FROM certificates WHERE common_name = ?''', (common_name,))
 
         item: Any = self.db_cur.fetchone()
 
         if item:
-            self.db_cur.execute('''DELETE FROM certificates WHERE certificate_id = ?''', (item['certificate_id'],))
+            self.db_cur.execute('''DELETE FROM certificates WHERE id = ?''', (item['id'],))
             result = True
 
         self.__commit_and_close()
@@ -154,7 +150,7 @@ class Database():
         self.db_cur.execute('''
             CREATE TABLE IF NOT EXISTS users
             (
-            user_id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             username TEXT,
             password TEXT,
             template TEXT,
@@ -167,12 +163,12 @@ class Database():
         self.db_cur.execute('''
             CREATE TABLE IF NOT EXISTS certificates
             (
-            certificate_id INTEGER PRIMARY KEY,
+            id INTEGER PRIMARY KEY,
             common_name TEXT,
             valid_from DATETIME,
             valid_to DATETIME,
-            user INTEGER,
-            FOREIGN KEY (user) REFERENCES users(user_id)
+            user_id INTEGER,
+            FOREIGN KEY (user_id) REFERENCES users(user_id)
             )''')
 
         self.__commit_and_close()
