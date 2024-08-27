@@ -136,11 +136,19 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         csr = x509.load_pem_x509_csr(b"-----BEGIN CERTIFICATE REQUEST-----\n" + csr_data + b"-----END CERTIFICATE REQUEST-----\n")
 
         # get the common name and san of the csr
-        csr_extensions = csr.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
-
         csr_object_common_name = csr.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value
-        csr_object_ip = csr_extensions.value.get_values_for_type(x509.IPAddress)
-        csr_object_dns = csr_extensions.value.get_values_for_type(x509.DNSName)
+
+        try:
+            csr_extensions = csr.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+        except:
+            csr_extensions = None
+
+        if csr_extensions:
+            csr_object_ip = csr_extensions.value.get_values_for_type(x509.IPAddress)
+            csr_object_dns = csr_extensions.value.get_values_for_type(x509.DNSName)
+        else:
+            csr_object_ip = None
+            csr_object_dns = None
 
         # check the common name and san of the csr
         ip_regex_match = san_check(self.logger, self.user['ip_regex'], csr_object_ip)
@@ -149,18 +157,20 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         if search(self.user['common_name_regex'], csr_object_common_name) and ip_regex_match and dns_regex_match:
             # checks if the client certificate for authentication and csr have the same value dns and ip address values
             if self.client_certificate:
-                cert_object = self.client_certificate.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+                try:
+                    cert_object = self.client_certificate.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+                except:
+                    cert_object = None
 
-                cert_object_ip = cert_object.value.get_values_for_type(x509.IPAddress)
-                cert_object_dns = cert_object.value.get_values_for_type(x509.DNSName)
+                if cert_object:
+                    cert_object_ip = cert_object.value.get_values_for_type(x509.IPAddress)
+                    cert_object_dns = cert_object.value.get_values_for_type(x509.DNSName)
 
-                if not equal_content_list(cert_object_ip, csr_object_ip):
-                    self.logger.debug("ip list not equal")
-                    return False
+                    if not equal_content_list(cert_object_ip, csr_object_ip):
+                        return False
 
-                if not equal_content_list(cert_object_dns, csr_object_dns):
-                    self.logger.debug("dns list not equal")
-                    return False
+                    if not equal_content_list(cert_object_dns, csr_object_dns):
+                        return False
 
             result = True
 

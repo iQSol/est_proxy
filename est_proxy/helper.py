@@ -62,7 +62,7 @@ def san_check(logger, pattern: str, san_list: list) -> bool:
             return False
 
         for san_item in san_list:
-            if not search(pattern, san_item):
+            if not search(pattern, str(san_item)):
                 logger.debug('Pattern not matching.')
                 return False
 
