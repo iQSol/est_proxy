@@ -12,7 +12,7 @@ import textwrap
 import OpenSSL
 import pytz
 from cryptography import x509
-from cryptography.x509.oid import NameOID
+from cryptography.x509.oid import NameOID, ExtensionOID
 from re import search
 from tlslite import SessionCache, HandshakeSettings, VerifierDB
 from tlslite.constants import CipherSuite, HashAlgorithm, SignatureAlgorithm, GroupName, SignatureScheme
@@ -45,7 +45,9 @@ def b64_url_recode(logger, string):
     result = str(string).translate(dict(zip(map(ord, u'-_'), u'+/')))
     return result
 
-def equal_content_list(list1: list, list2: list) -> bool:
+def equal_content_list(logger, list1: list, list2: list) -> bool:
+    logger.debug(f"Compare: {list1} - {list2}")
+
     diff1 = set(list1) - set(list2)
     diff2 = set(list2) - set(list1)
 
@@ -67,6 +69,31 @@ def san_check(logger, pattern: str, san_list: list) -> bool:
                 return False
 
     return True
+
+def get_cn_and_san(data):
+
+    try:
+        data_object_cn = [data.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value]
+    except:
+        data_object_cn = []
+
+    try:
+        data_extensions = data.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
+    except:
+        data_extensions = None
+
+    if data_extensions:
+        data_object_ip = data_extensions.value.get_values_for_type(x509.IPAddress)
+        data_object_dns = data_extensions.value.get_values_for_type(x509.DNSName)
+    else:
+        data_object_ip = []
+        data_object_dns = []
+
+    return {
+        'cn': data_object_cn,
+        'ip': data_object_ip,
+        'dns': data_object_dns
+    }
 
 def get_certificate_information(pem_data):
 
