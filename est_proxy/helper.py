@@ -59,13 +59,16 @@ def equal_content_list(logger, list1: list, list2: list) -> bool:
 def san_check(logger, pattern: str, san_list: list) -> bool:
 
     if pattern:
-        if not san_list:
+        if pattern == '^$' and not san_list:
+            logger.debug('SAN list empty, but pattern is ^$.')
+            return True
+        elif not san_list:
             logger.debug('SAN list empty.')
             return False
 
         for san_item in san_list:
             if not search(pattern, str(san_item)):
-                logger.debug('Pattern not matching.')
+                logger.debug(f"Pattern not matching. {pattern} - {str(san_item)}")
                 return False
 
     return True
@@ -94,6 +97,19 @@ def get_cn_and_san(data):
         'ip': data_object_ip,
         'dns': data_object_dns
     }
+
+def check_for_other_sans(data):
+    other_sans = []
+    try:
+        sans = data.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
+    except:
+        sans = []
+
+    for san in sans:
+        if not isinstance(san, (x509.DNSName, x509.IPAddress)):
+            other_sans.append(san)
+
+    return other_sans
 
 def get_certificate_information(pem_data):
 

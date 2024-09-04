@@ -99,7 +99,7 @@ class CAhandler(object):
 
         ca_pem = None
 
-        if self.host and self.user and self.password and self.template:
+        if self.host and self.user and self.password:
             # setup certserv
             ca_server = Certsrv(self.host, self.user, self.password, self.auth_method, self.ca_bundle)
             # check connection and credentials

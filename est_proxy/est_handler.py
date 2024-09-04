@@ -6,7 +6,7 @@ import subprocess
 import importlib
 from http.server import BaseHTTPRequestHandler
 # pylint: disable=E0401
-from est_proxy.helper import config_load, ca_handler_get, logger_setup, get_certificate_information, equal_content_list, san_check, get_cn_and_san
+from est_proxy.helper import config_load, ca_handler_get, logger_setup, get_certificate_information, equal_content_list, san_check, get_cn_and_san, check_for_other_sans
 from est_proxy.database import Database
 from hashlib import sha512
 from re import search
@@ -94,6 +94,9 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         if authenticated and self.user:
             authenticated = self._check_csr_data(csr_data)
 
+            if not authenticated:
+                self.logger.info('Problems were encountered when checking the CSR and certificate.')
+
         self.logger.debug('ESTSrvHandler._auth_check() ended with: {0}'.format(authenticated))
 
         return authenticated
@@ -140,6 +143,11 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         csr_info = get_cn_and_san(csr)
 
         if not csr_info['cn']:
+            return False
+
+        other_sans = check_for_other_sans(csr)
+        if other_sans:
+            self.logger.info(f"Aborting! Found other SANs: {other_sans}")
             return False
 
         # check the common name and san of the csr
