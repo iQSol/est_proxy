@@ -74,7 +74,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         self.logger.debug('ESTSrvHandler._cacerts_get() ended with: {0}'.format(bool(ca_pkcs7)))
         return ca_pkcs7
 
-    def _auth_check(self, csr_data):
+    def _auth_check(self):
         """ split ca_certs """
         self.logger.debug('ESTSrvHandler._auth_check()')
         authenticated = False
@@ -90,12 +90,6 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             # Basic
             if self.headers['Authorization'].startswith('Basic '):
                authenticated = self._basic_auth_check()
-
-        if authenticated and self.user:
-            authenticated = self._check_csr_data(csr_data)
-
-            if not authenticated:
-                self.logger.info('Problems were encountered when checking the CSR and certificate.')
 
         self.logger.debug('ESTSrvHandler._auth_check() ended with: {0}'.format(authenticated))
 
@@ -113,7 +107,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         user = self.database.get_user(username)
 
         if user and sha512(password.encode()).hexdigest() == user['password']:
-            self.logger.debug('Client verified with basic auth.')
+            self.logger.info(' => Client verified with basic auth.')
             self.user = user
             result = True
 
@@ -129,7 +123,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
 
             if certificate_from_db:
                 self.user = self.database.get_user_by_id(certificate_from_db['user_id'])
-                self.logger.debug('Client verified with nginx.')
+                self.logger.info(' => Client verified by nginx.')
                 result = True
 
         return result
@@ -137,23 +131,36 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
     def _check_csr_data(self, csr_data) -> bool:
         result = False
 
-        csr = x509.load_pem_x509_csr(b"-----BEGIN CERTIFICATE REQUEST-----\n" + csr_data + b"-----END CERTIFICATE REQUEST-----\n")
+        try:
+            csr = x509.load_pem_x509_csr(b"-----BEGIN CERTIFICATE REQUEST-----\n" + csr_data + b"-----END CERTIFICATE REQUEST-----\n")
+        except:
+            self.logger.info(' => Aborting - Could not load CSR.')
+            return False
 
         # get the common name and san of the csr
         csr_info = get_cn_and_san(csr)
 
         if not csr_info['cn']:
+            self.logger.info(' => Aborting - No common name could be found.')
             return False
 
         other_sans = check_for_other_sans(csr)
         if other_sans:
-            self.logger.info(f"Aborting! Found other SANs: {other_sans}")
+            self.logger.info(' => Aborting - Found other SANs then IP or DNS.')
             return False
 
         # check the common name and san of the csr
         cn_regex_match = san_check(self.logger, self.user['common_name_regex'], csr_info['cn'])
+        if not cn_regex_match:
+            self.logger.info(' => Aborting - The common name does not match the specified regex.')
+
         ip_regex_match = san_check(self.logger, self.user['ip_regex'], csr_info['ip'])
+        if not ip_regex_match:
+            self.logger.info(' => Aborting - IP entries do not match the specified regex.')
+
         dns_regex_match = san_check(self.logger, self.user['dns_regex'], csr_info['dns'])
+        if not dns_regex_match:
+            self.logger.info(' => Aborting - DNS entries do not match the specified regex.')
 
         if cn_regex_match and ip_regex_match and dns_regex_match:
             # checks if the client certificate for authentication and csr have the same value dns and ip address values
@@ -162,15 +169,15 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                 cert_info = get_cn_and_san(self.client_certificate)
 
                 if not equal_content_list(self.logger, cert_info['cn'], csr_info['cn']):
-                    self.logger.debug("cn list not equal")
+                    self.logger.info(' => Aborting - Common name of the displayed client certificate and CSR do not match.')
                     return False
 
                 if not equal_content_list(self.logger, cert_info['ip'], csr_info['ip']):
-                    self.logger.debug("ip list not equal")
+                    self.logger.info(' => Aborting - IP list of the displayed client certificate and CSR do not match.')
                     return False
 
                 if not equal_content_list(self.logger, cert_info['dns'], csr_info['dns']):
-                    self.logger.debug("dns list not equal")
+                    self.logger.info(' => Aborting - DNS list of the displayed client certificate and CSR do not match.')
                     return False
 
             result = True
@@ -374,7 +381,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         else:
             code = 400
             content_type = 'text/html'
-            content = 'An unknown error has occured.'
+            content = 'An unknown error has occured.\n'
 
         if content:
             content_length = len(str(content))
@@ -392,26 +399,36 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         code = 400
 
         # check if connection is properly authenticated
-        connection_authenticated = self._auth_check(data)
+        connection_authenticated = self._auth_check()
+
+        if connection_authenticated and self.user:
+            certificate_authenticated = self._check_csr_data(data)
+
 
         if connection_authenticated:
-            if data and (self.path == '/.well-known/est/simpleenroll' or self.path == '/.well-known/est/simplereenroll'):
-                # enroll certificate
-                (error, cert) = self._cert_enroll(data)
-                if not error:
-                    code = 200
-                    content_type = 'application/pkcs7-mime; smime-type=certs-only'
-                    content = cert
-                    encoding = 'base64'
-                else:
-                    code = 500
+            if certificate_authenticated:
+                if data and (self.path == '/.well-known/est/simpleenroll' or self.path == '/.well-known/est/simplereenroll'):
+                    # enroll certificate
+                    (error, cert) = self._cert_enroll(data)
+                    if not error:
+                        self.logger.info(' => Success - The requested certificate was successfully enrolled.')
+                        code = 200
+                        content_type = 'application/pkcs7-mime; smime-type=certs-only'
+                        content = cert
+                        encoding = 'base64'
+                    else:
+                        code = 500
             else:
                 code = 400
                 if data:
-                    content = 'An unknown error has occured.\n'
+                    if self.client_certificate:
+                        content = 'A problem ocurred while checking the CSR and client certificate.\nView the EST proxy log for more information!\n'
+                    else:
+                        content = 'A problem ocurred while checking the CSR. View the EST proxy log for more information!\n'
                 else:
                     content = 'No data had been send.\n'
         else:
+            self.logger.info(' => Aborting - The client could not be authenticated.')
             code = 401
             content = 'The server was unable to authorize the request.\n'
 
