@@ -3,5 +3,7 @@ requests
 configparser
 tlslite-ng==0.8.0a40
 pytz
-certsrv[ntlm]
 cryptography
+impacket
+requests_gssapi
+gssapi

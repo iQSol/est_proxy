@@ -2,11 +2,15 @@ FROM ubuntu:22.04
 
 RUN apt-get update
 RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
-RUN apt-get install --no-install-recommends -y \
+RUN DEBIAN_FRONTEND="noninteractive" apt-get install --no-install-recommends -y \
     python3-pip \
     curl \
     openssl \
     patch \
+    krb5-user \
+    libgssapi-krb5-2 \
+    libkrb5-3 \
+    python3-gssapi \
  && rm -rf /var/lib/apt/lists/*
 
 # install python requirements
