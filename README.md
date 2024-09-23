@@ -19,13 +19,6 @@ Other handles are available, but are not maintained:
   - [Openssl](docs/openssl.md)
   - [XCA](docs/xca.md)
 
-
-To build your own container navigate to the folder `examples/Docker` and execute following command:
-
-```
-docker-compose build --no-cache
-```
-
 > [!WARNING]
 > The EST proxy has to run behind nginx. Otherwise you will have security problems.
 
