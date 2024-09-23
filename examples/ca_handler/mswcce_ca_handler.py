@@ -47,6 +47,7 @@ class CAhandler(object):
         self.user = config_dic.get('CAhandler', 'user', fallback=None)
         self.password = config_dic.get('CAhandler', 'password', fallback=None)
         self.target_domain = config_dic.get('CAhandler', 'target_domain', fallback=None)
+        self.domain_controller = config_dic.get('CAhandler', 'domain_controller', fallback=None)
         self.ca_name = config_dic.get('CAhandler', 'ca_name', fallback=None)
         self.ca_bundle = config_dic.get('CAhandler', 'ca_bundle', fallback=None)
         self.use_kerberos = config_dic.getboolean('CAhandler', 'use_kerberos', fallback=False)
@@ -105,8 +106,6 @@ class CAhandler(object):
             self.logger.error("Config incomplete")
             return ("Config incomplete", None, None, None)
 
-        self.logger.debug("ε=ε=┌( >_<)┘ EST over mswcce...")
-
         # create request
         request = self.request_create()
 
@@ -122,6 +121,7 @@ class CAhandler(object):
             cert_raw = cert_raw.replace("\r\n", "\n")
         except Exception as err_:
             cert_raw = None
+            error = f"{err_}"
             self.logger.error("ca_server.get_cert() failed with error: %s", err_)
 
         self.logger.debug("Certificate.enroll() ended")

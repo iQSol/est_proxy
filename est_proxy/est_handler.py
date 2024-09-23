@@ -134,33 +134,33 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         try:
             csr = x509.load_pem_x509_csr(b"-----BEGIN CERTIFICATE REQUEST-----\n" + csr_data + b"-----END CERTIFICATE REQUEST-----\n")
         except:
-            self.logger.info(' => Aborting - Could not load CSR.')
+            self.logger.info(' => Aborted - Could not load CSR.')
             return False
 
         # get the common name and san of the csr
         csr_info = get_cn_and_san(csr)
 
         if not csr_info['cn']:
-            self.logger.info(' => Aborting - No common name could be found.')
+            self.logger.info(' => Aborted - No common name could be found.')
             return False
 
         other_sans = check_for_other_sans(csr)
         if other_sans:
-            self.logger.info(' => Aborting - Found other SANs then IP or DNS.')
+            self.logger.info(' => Aborted - Found other SANs then IP or DNS.')
             return False
 
         # check the common name and san of the csr
         cn_regex_match = san_check(self.logger, self.user['common_name_regex'], csr_info['cn'])
         if not cn_regex_match:
-            self.logger.info(' => Aborting - The common name does not match the specified regex.')
+            self.logger.info(' => Aborted - The common name does not match the specified regex.')
 
         ip_regex_match = san_check(self.logger, self.user['ip_regex'], csr_info['ip'])
         if not ip_regex_match:
-            self.logger.info(' => Aborting - IP entries do not match the specified regex.')
+            self.logger.info(' => Aborted - IP entries do not match the specified regex.')
 
         dns_regex_match = san_check(self.logger, self.user['dns_regex'], csr_info['dns'])
         if not dns_regex_match:
-            self.logger.info(' => Aborting - DNS entries do not match the specified regex.')
+            self.logger.info(' => Aborted - DNS entries do not match the specified regex.')
 
         if cn_regex_match and ip_regex_match and dns_regex_match:
             # checks if the client certificate for authentication and csr have the same value dns and ip address values
@@ -169,15 +169,15 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                 cert_info = get_cn_and_san(self.client_certificate)
 
                 if not equal_content_list(self.logger, cert_info['cn'], csr_info['cn']):
-                    self.logger.info(' => Aborting - Common name of the displayed client certificate and CSR do not match.')
+                    self.logger.info(' => Aborted - Common name of the displayed client certificate and CSR do not match.')
                     return False
 
                 if not equal_content_list(self.logger, cert_info['ip'], csr_info['ip']):
-                    self.logger.info(' => Aborting - IP list of the displayed client certificate and CSR do not match.')
+                    self.logger.info(' => Aborted - IP list of the displayed client certificate and CSR do not match.')
                     return False
 
                 if not equal_content_list(self.logger, cert_info['dns'], csr_info['dns']):
-                    self.logger.info(' => Aborting - DNS list of the displayed client certificate and CSR do not match.')
+                    self.logger.info(' => Aborted - DNS list of the displayed client certificate and CSR do not match.')
                     return False
 
             result = True
@@ -231,15 +231,13 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
 
                     cert_pkcs7 = self._pkcs7_convert(cert, pkcs7_clean=True)
                 else:
-                    if not cert:
-                        error = 'No error but no cert returned'
                     self.logger.error('ESTSrvHandler._cert_enroll(): {0}'.format(error))
 
         else:
             error = 'no CSR submittted'
             self.logger.error('ESTSrvHandler._cert_enroll(): no csr submitted')
 
-        self.logger.debug('ESTSrvHandler._cacerts_get() ended with: {0}'.format(bool(cert_pkcs7)))
+        self.logger.debug('ESTSrvHandler._cert_enroll() ended with: {0}'.format(bool(cert_pkcs7)))
         return (error, cert_pkcs7)
 
     def _config_load(self):
@@ -417,6 +415,8 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                         content = cert
                         encoding = 'base64'
                     else:
+                        self.logger.info(' => Aborted - A problem ocurred while enrolling the certificate.')
+                        content = 'A problem ocurred while enrolling the certificate.\n'
                         code = 500
             else:
                 code = 400
@@ -428,7 +428,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                 else:
                     content = 'No data had been send.\n'
         else:
-            self.logger.info(' => Aborting - The client could not be authenticated.')
+            self.logger.info(' => Aborted - The client could not be authenticated.')
             code = 401
             content = 'The server was unable to authorize the request.\n'
 
