@@ -1,13 +1,10 @@
 version: '3.2'
 services:
-  est-proxy:
-    build:
-      context: ../../.
-      dockerfile: examples/Docker/est_proxy/Dockerfile
+  est_proxy:
     image: est_proxy
     volumes:
       - type: bind
-        source: ./data
+        source: /your/path/est_proxy/
         target: /usr/local/est_proxy/data
         read_only: false
       - type: bind
@@ -19,10 +16,5 @@ services:
         target: /etc/localtime
         read_only: true
     ports:
-      - "17443:17443"
+      - "127.0.0.1:9443:9443"
     restart: always
-
-networks:
-  default:
-    external:
-      name: est
