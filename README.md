@@ -29,7 +29,7 @@ docker-compose build --no-cache
 > [!WARNING]
 > The EST proxy has to run behind nginx. Otherwise you will have security problems.
 
-Therefore, you should use the following Nginx configuration:
+Therefore, you should use the following Nginx configuration. If you are attempting to authenticate the request to the EST proxy with a certificate, the certificate requires the **"Client Authentication"** application policy:
 ```nginx
 server {
 		listen <ip-address>:9443 ssl default_server;
