@@ -362,6 +362,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         """ main method to process get requests """
         self.logger.debug('ESTSrvHandler._get_process %s', self.path)
         content = None
+        content_type = None
         content_length = 0
         encoding = None
 
@@ -376,6 +377,9 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             else:
                 code = 500
                 content_type = 'text/html'
+        elif self.path == '/.well-known/est/csrattrs':
+            code = 404
+            content = 'Not implemented.\n'
         else:
             code = 400
             content_type = 'text/html'
@@ -400,8 +404,13 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         connection_authenticated = self._auth_check()
 
         if connection_authenticated and self.user:
-            certificate_authenticated = self._check_csr_data(data)
+            # Replace csr headers if the exist
+            if search(b"-----BEGIN CERTIFICATE REQUEST-----\n", data):
+                decoded_data = data.decode('utf-8')
+                cleaned_data = decoded_data.replace('-----BEGIN CERTIFICATE REQUEST-----\n', '').replace('-----END CERTIFICATE REQUEST-----\n', '')
+                data = cleaned_data.encode('utf-8')
 
+            certificate_authenticated = self._check_csr_data(data)
 
         if connection_authenticated:
             if certificate_authenticated:
@@ -418,6 +427,9 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
                         self.logger.info(' => Aborted - A problem ocurred while enrolling the certificate.')
                         content = 'A problem ocurred while enrolling the certificate.\n'
                         code = 500
+            elif self.path == '/.well-known/est/serverkeygen' or self.path == '/.well-known/est/fullcmc':
+                code = 404
+                content = 'Not implemented.\n'
             else:
                 code = 400
                 if data:

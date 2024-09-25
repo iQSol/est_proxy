@@ -59,12 +59,9 @@ def equal_content_list(logger, list1: list, list2: list) -> bool:
 def san_check(logger, pattern: str, san_list: list) -> bool:
 
     if pattern:
-        if pattern == '^$' and not san_list:
-            logger.debug('SAN list empty, but pattern is ^$.')
-            return True
-        elif not san_list:
+        if not san_list:
             logger.debug('SAN list empty.')
-            return False
+            return True
 
         for san_item in san_list:
             if not search(pattern, str(san_item)):
