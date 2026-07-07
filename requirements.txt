@@ -1,9 +1,7 @@
-pyOpenssl
-requests
 configparser
-tlslite-ng==0.8.0a40
+tlslite-ng
 pytz
 cryptography
 impacket
-requests_gssapi
-gssapi
+pyrad2
+bcrypt

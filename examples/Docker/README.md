@@ -51,7 +51,7 @@ The container requires a configuration file `est_proxy.cfg` stored in the rood o
 debug: False
 connection_log: False
 
-[LOGGING]
+[Logging]
 log_format: '%(asctime)s - est_proxy - %(levelname)s - %(message)s'
 
 [Daemon]

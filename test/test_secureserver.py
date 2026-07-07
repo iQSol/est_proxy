@@ -211,24 +211,13 @@ fmAA52ygKHBzUr9V33CkW0FhvjqkAUya5x9CqWlHoal0RVvFavnw+4ImqbE=
     @patch('est_proxy.secureserver.logger_setup')
     @patch('est_proxy.secureserver.config_load')
     def test_012_config_load(self, mock_load_cfg, mock_logger):
-        """ test _config_load  daemon section without key_file and cert_file """
+        """ test _config_load config without a daemon section does not populate config_dic """
         mock_logger.return_value = self.logger
         parser = configparser.ConfigParser()
-        parser['SRP'] = {'foo': 'bar'}
         mock_load_cfg.return_value = parser
+        self.secureserver.config_dic = {}
         self.secureserver._config_load()
-        self.assertEqual({}, self.secureserver.config_dic['SRP'])
-
-    @patch('est_proxy.secureserver.logger_setup')
-    @patch('est_proxy.secureserver.config_load')
-    def test_013_config_load(self, mock_load_cfg, mock_logger):
-        """ test _config_load  daemon section without key_file and cert_file """
-        mock_logger.return_value = self.logger
-        parser = configparser.ConfigParser()
-        parser['SRP'] = {'userdb': 'foo'}
-        mock_load_cfg.return_value = parser
-        self.secureserver._config_load()
-        self.assertEqual({'userdb': 'foo'}, self.secureserver.config_dic['SRP'])
+        self.assertNotIn('Daemon', self.secureserver.config_dic)
 
     def test_014_init(self):
         """ test init """
@@ -241,25 +230,13 @@ fmAA52ygKHBzUr9V33CkW0FhvjqkAUya5x9CqWlHoal0RVvFavnw+4ImqbE=
     def test_015_handshake(self):
         """ test handshake """
         connection = Mock()
-        connection.request_post_handshake_auth = Mock(return_value=['foo', 'bar'])
         self.secureserver.logger = self.logger
         self.assertTrue(self.secureserver.handshake(connection))
-
-    def test_016_handshake(self):
-        """ test handshake """
-        connection = Mock()
-        connection.request_post_handshake_auth = 'bsbas'
-        self.secureserver.logger = self.logger
-
-        with self.assertLogs('test_est', level='DEBUG') as lcm:
-            self.assertTrue(self.secureserver.handshake(connection))
-        self.assertIn("DEBUG:test_est:'str' object is not callable", lcm.output)
 
     @patch('est_proxy.secureserver.connection_log')
     def test_017_handshake(self, mock_log):
         """ test handshake """
         connection = Mock()
-        connection.request_post_handshake_auth = Mock(return_value=['foo', 'bar'])
         self.secureserver.logger = self.logger
         self.secureserver.config_dic = {'connection_log': True}
         with self.assertLogs('test_est', level='INFO') as lcm:
@@ -271,7 +248,6 @@ fmAA52ygKHBzUr9V33CkW0FhvjqkAUya5x9CqWlHoal0RVvFavnw+4ImqbE=
     def test_018_handshake(self, mock_log):
         """ test handshake unknown exception """
         connection = Mock()
-        connection.request_post_handshake_auth = Mock(return_value=['foo', 'bar'])
         connection.handshakeServer.side_effect = Exception('unkn')
         self.secureserver.logger = self.logger
         self.secureserver.config_dic = {'connection_log': True}
@@ -287,7 +263,6 @@ fmAA52ygKHBzUr9V33CkW0FhvjqkAUya5x9CqWlHoal0RVvFavnw+4ImqbE=
         alert.description = tlslite.constants.AlertDescription.handshake_failure
 
         connection = Mock()
-        connection.request_post_handshake_auth = Mock(return_value=['foo', 'bar'])
         connection.handshakeServer.side_effect = tlslite.errors.TLSLocalAlert(alert)
         self.secureserver.logger = self.logger
         self.secureserver.config_dic = {'connection_log': True}
@@ -303,7 +278,6 @@ fmAA52ygKHBzUr9V33CkW0FhvjqkAUya5x9CqWlHoal0RVvFavnw+4ImqbE=
         alert.description = 'other failure'
 
         connection = Mock()
-        connection.request_post_handshake_auth = Mock(return_value=['foo', 'bar'])
         connection.handshakeServer.side_effect = tlslite.errors.TLSLocalAlert(alert)
         self.secureserver.logger = self.logger
         self.secureserver.config_dic = {'connection_log': True}
@@ -319,7 +293,6 @@ fmAA52ygKHBzUr9V33CkW0FhvjqkAUya5x9CqWlHoal0RVvFavnw+4ImqbE=
         alert.description = tlslite.constants.AlertDescription.user_canceled
 
         connection = Mock()
-        connection.request_post_handshake_auth = Mock(return_value=['foo', 'bar'])
         connection.handshakeServer.side_effect = tlslite.errors.TLSRemoteAlert(alert)
         self.secureserver.logger = self.logger
         self.secureserver.config_dic = {'connection_log': True}
@@ -335,7 +308,6 @@ fmAA52ygKHBzUr9V33CkW0FhvjqkAUya5x9CqWlHoal0RVvFavnw+4ImqbE=
         alert.description = tlslite.constants.AlertDescription.handshake_failure
 
         connection = Mock()
-        connection.request_post_handshake_auth = Mock(return_value=['foo', 'bar'])
         connection.handshakeServer.side_effect = tlslite.errors.TLSRemoteAlert(alert)
         self.secureserver.logger = self.logger
         self.secureserver.config_dic = {'connection_log': True}
@@ -349,7 +321,6 @@ fmAA52ygKHBzUr9V33CkW0FhvjqkAUya5x9CqWlHoal0RVvFavnw+4ImqbE=
         """ test handshake TLSError opther message """
 
         connection = Mock()
-        connection.request_post_handshake_auth = Mock(return_value=['foo', 'bar'])
         connection.handshakeServer.side_effect = tlslite.errors.TLSError()
         self.secureserver.logger = self.logger
         self.secureserver.config_dic = {'connection_log': True}

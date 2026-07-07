@@ -8,8 +8,10 @@ from est_proxy.helper import config_load
 class CAhandler(object):
     """ EST CA  handler """
 
-    def __init__(self, _debug=None, logger=None):
+    def __init__(self, cfg_file=None, logger=None, template=None):
+        self.cfg_file = cfg_file
         self.logger = logger
+        self.template = template
         self.parameter = None
 
     def __enter__(self):
@@ -49,9 +51,8 @@ class CAhandler(object):
         """ enroll certificate  """
         self.logger.debug('CAhandler.enroll()')
 
-        cert_bundle = None
         error = None
-        cert_raw = None
+        certificate = None
         poll_indentifier = None
         self._stub_func(csr)
 
@@ -66,7 +67,7 @@ class CAhandler(object):
         error = None
         certificate = None
         rejected = False
-        self._stub_func(cert_name)
+        self._stub_func(poll_identifier)
 
         self.logger.debug('CAhandler.poll() ended')
         return(error, certificate, poll_identifier, rejected)

@@ -1,0 +1,4 @@
+ATTRIBUTE	User-Name				1	string
+ATTRIBUTE	User-Password			2	string encrypt=1
+ATTRIBUTE	NAS-Identifier			32	string
+ATTRIBUTE	Message-Authenticator	80	octets

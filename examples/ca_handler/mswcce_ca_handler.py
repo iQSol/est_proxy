@@ -95,7 +95,7 @@ class CAhandler(object):
 
         return ca_pem
 
-    def enroll(self, csr: str) -> Tuple[str, str, str, str]:
+    def enroll(self, csr: str) -> Tuple[str, str, str]:
         """enroll certificate via MS-WCCE"""
         self.logger.debug("CAhandler.enroll(%s)", self.template)
 
@@ -104,7 +104,7 @@ class CAhandler(object):
 
         if not (self.host and self.user and self.password and self.template):
             self.logger.error("Config incomplete")
-            return ("Config incomplete", None, None, None)
+            return ("Config incomplete", None, None)
 
         # create request
         request = self.request_create()

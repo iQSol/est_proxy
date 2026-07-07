@@ -10,6 +10,8 @@ from unittest.mock import patch, Mock
 sys.path.insert(0, '.')
 sys.path.insert(1, '..')
 
+from est_proxy.version import __version__
+
 class HelperTestCases(unittest.TestCase):
     """ test class for helper """
     def setUp(self):
@@ -107,7 +109,7 @@ class HelperTestCases(unittest.TestCase):
         handler_class = Mock()
         with self.assertLogs('test_est', level='INFO') as lcm:
             self.srv_run(self.logger, server_class, handler_class)
-        self.assertIn('INFO:test_est:starting est_proxy 0.1.0 on 127.0.0.1:8080', lcm.output)
+        self.assertIn('INFO:test_est:starting est_proxy {0} on 127.0.0.1:8080'.format(__version__), lcm.output)
         self.assertIn('INFO:test_est:stopping est_proxy on 127.0.0.1:8080', lcm.output)
 
 if __name__ == '__main__':
