@@ -20,10 +20,11 @@ class HelperTestCases(unittest.TestCase):
         """ setup """
         import logging
         logging.basicConfig(level=logging.CRITICAL)
-        from est_proxy.helper import config_load, hssrv_options_get, connection_log, b64decode_pad, b64_url_recode, build_pem_file, ca_handler_get, convert_byte_to_string, convert_string_to_byte, uts_to_date_utc, logger_setup, san_check, get_cn_and_san, check_for_other_subject_attributes, check_for_other_extensions, check_for_other_attributes, csr_allowed_extensions, equal_subjects
+        from est_proxy.helper import config_load, hssrv_options_get, connection_log, b64decode_pad, b64_url_recode, build_pem_file, ca_handler_get, convert_byte_to_string, convert_string_to_byte, uts_to_date_utc, logger_setup, san_check, get_cn_and_san, check_for_other_subject_attributes, check_for_other_extensions, check_for_other_attributes, csr_allowed_extensions, equal_subjects, equal_content_list
         self.csr_allowed_extensions = csr_allowed_extensions
         self.san_check = san_check
         self.get_cn_and_san = get_cn_and_san
+        self.equal_content_list = equal_content_list
         self.check_for_other_subject_attributes = check_for_other_subject_attributes
         self.check_for_other_extensions = check_for_other_extensions
         self.check_for_other_attributes = check_for_other_attributes
@@ -412,6 +413,19 @@ KxEs3JidvpZrl3o23LMGEPoJs3zIuowTa217PHwdBw4UwtD7KxJK/+344A==
         """ get_cn_and_san() returns ALL common names (not just the first) """
         csr = self._load_csr(csr_fixtures.build_csr(['test-client-01', 'test-server.example.com'], ['DNS:test-client-01.example.com']))
         self.assertEqual(['test-client-01', 'test-server.example.com'], self.get_cn_and_san(csr)['cn'])
+
+    def test_071a_get_cn_and_san_no_cn(self):
+        """ get_cn_and_san() returns an empty cn list for a CSR carrying no common name """
+        csr = self._load_csr(csr_fixtures.build_csr([], ['DNS:test-client-01.example.com']))
+        self.assertEqual([], self.get_cn_and_san(csr)['cn'])
+
+    def test_071b_equal_content_list_equal(self):
+        """ equal_content_list() two lists with the same members (any order) -> True """
+        self.assertTrue(self.equal_content_list(self.logger, ['a', 'b'], ['b', 'a']))
+
+    def test_071c_equal_content_list_differ(self):
+        """ equal_content_list() lists with different members -> False """
+        self.assertFalse(self.equal_content_list(self.logger, ['a', 'b'], ['a', 'c']))
 
     def test_072_check_for_other_subject_attributes_clean(self):
         """ check_for_other_subject_attributes() CN-only subject -> empty """

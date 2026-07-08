@@ -77,7 +77,7 @@ foo
 
     @patch('tempfile.NamedTemporaryFile')
     def test_006_cacerts_dump(self, mock_nf):
-        """ _cacerts_dump() two certs """
+        """ _cacerts_dump() one cert """
         obj1 = Mock()
         obj1.name = 'foo_ret'
         mock_nf.side_effect = [obj1]
@@ -94,7 +94,7 @@ foo
 
     @patch('tempfile.NamedTemporaryFile')
     def test_008_cacerts_dump(self, mock_nf):
-        """ _cacerts_dump() empty list   """
+        """ _cacerts_dump() non-list argument (string) """
         obj1 = Mock()
         obj1.name = 'foo_ret'
         mock_nf.side_effect = [obj1]
@@ -117,7 +117,7 @@ foo
         self.assertEqual(result, self.esthandler._opensslcmd_build(file_name_list, pkcs7_file))
 
     def test_011__opensslcmd_build(self):
-        """ _opensslcmd_build two certs """
+        """ _opensslcmd_build three certs """
         self.esthandler.openssl_bin = 'openssl'
         file_name_list = ['foo1', 'foo2', 'foo3']
         pkcs7_file = 'pkcs7_file'
@@ -169,7 +169,7 @@ foo
         self.assertEqual(8, self.esthandler._pkcs7_clean(pkcs7))
 
     def test_019___pkcs7_clean(self):
-        """ _pkcs7_clean() pcs#7 byte """
+        """ _pkcs7_clean() pkcs#7 byte """
         pkcs7 = b'-----BEGIN PKCS7-----\nfoo-----END PKCS7-----'
         result = 'foo'
         self.assertEqual(result, self.esthandler._pkcs7_clean(pkcs7))
@@ -236,7 +236,7 @@ foo
     @patch('est_proxy.est_handler.ESTSrvHandler._cacerts_split')
     @patch('subprocess.call')
     def test_025__pkcs7_convert(self, mock_call, mock_split, mock_dmp, mock_clean, mock_nf):
-        """ _pkcs7_convert() all ok """
+        """ _pkcs7_convert() openssl returns non-zero """
         obj1 = Mock()
         obj1.name = 'mock_nf_ret'
         mock_nf.side_effect = [obj1]
@@ -264,7 +264,7 @@ foo
 
     def test_029__get_process(self):
         """ _get_process() - string as path """
-        self.esthandler.path = 13
+        self.esthandler.path = '13'
         self.assertEqual((404, 'text/html', 30, None, b'An unknown error has occured.\n'), self.esthandler._get_process())
 
     def test_030__get_process(self):
@@ -571,7 +571,7 @@ foo
         self.esthandler.database.insert_or_update_certificate.assert_called_with('cn', 'from', 'to', 1)
 
     def test_055__cacerts_get(self):
-        """ _cert_enroll() error returned """
+        """ _cacerts_get() handler returns no cacerts """
         ca_handler_module = importlib.import_module('examples.ca_handler.skeleton_ca_handler')
         self.esthandler.cahandler = ca_handler_module.CAhandler
         self.esthandler.cahandler._config_load = Mock()
@@ -582,7 +582,7 @@ foo
 
     @patch('est_proxy.est_handler.ESTSrvHandler._pkcs7_convert')
     def test_056__cacerts_get(self, mock_convert):
-        """ _cert_enroll() error returned """
+        """ _cacerts_get() converts returned cacerts to pkcs#7 """
         ca_handler_module = importlib.import_module('examples.ca_handler.skeleton_ca_handler')
         self.esthandler.cahandler = ca_handler_module.CAhandler
         self.esthandler.cahandler._config_load = Mock()
@@ -701,19 +701,13 @@ foo
 
     @patch('est_proxy.est_handler.Database')
     def test_068__init__(self, mock_database):
-        """ test __init__ parsing cfg_file """
-        request = Mock()
-        request.side_effect = Exception('_tmpfiles_clean')
-        request.makefile.return_value = io.BytesIO(b"GET /")
-        request.raw_requestline.return_value = 'fooooo'
-        client_address = 'client_address'
-        server_address = Mock()
+        """ test __init__ falls back to default cfg_file when args are missing """
         self.esthandler.__init__()
         self.assertEqual('est_proxy.cfg', self.esthandler.cfg_file)
 
     @patch('est_proxy.est_handler.ESTSrvHandler._post_process')
     def test_069_do_post(self, mock_process):
-        """ test do get """
+        """ test do_POST with a Content-Length body """
         mock_process.return_value = ['code', 'content_type', 'content_length', 'encoding', 'content']
         self.esthandler.client_address = ('127.0.0.1', 8080)
         self.esthandler.path = '/'
@@ -727,7 +721,7 @@ foo
 
     @patch('est_proxy.est_handler.ESTSrvHandler._post_process')
     def test_070_do_post(self, mock_process):
-        """ test do get """
+        """ test do_POST with a zero-length Content-Length """
         mock_process.return_value = ['code', 'content_type', 'content_length', 'encoding', 'content']
         self.esthandler.client_address = ('127.0.0.1', 8080)
         self.esthandler.path = '/'
@@ -1129,6 +1123,46 @@ foo
         _args, kwargs = mock_radsec_cls.call_args
         self.assertEqual(kwargs['secret'], b'mysecret')
 
+    @patch('est_proxy.est_handler.Client')
+    def test_084d__udp_client_passes_config(self, mock_client_cls):
+        """ _udp_client() constructs the pyrad2 Client from the udp config (secret encoded) """
+        self.esthandler.radius_cfg = self._udp_radius_cfg()
+        self.esthandler._udp_client()
+        _args, kwargs = mock_client_cls.call_args
+        self.assertEqual(kwargs['server'], '127.0.0.1')
+        self.assertEqual(kwargs['authport'], 1812)
+        self.assertEqual(kwargs['secret'], b'secret')
+        self.assertEqual(kwargs['retries'], 1)
+        self.assertEqual(kwargs['timeout'], 5)
+
+    def test_084e__radius_send_builds_access_request_packet(self):
+        """ _radius_send() builds an Access-Request with the NAS identifier and encrypted password (udp) """
+        self.esthandler.radius_cfg = self._udp_radius_cfg()
+        mock_client = MagicMock()
+        mock_request = MagicMock()
+        mock_request.pw_crypt = Mock(return_value=b'encrypted')
+        mock_client.create_auth_packet = Mock(return_value=mock_request)
+        mock_client.send_packet = Mock(return_value='reply')
+        result = self.esthandler._radius_send(mock_client, 'foo', 'bar')
+        mock_client.create_auth_packet.assert_called_with(code=PacketType.AccessRequest, User_Name='foo', NAS_Identifier='est_proxy')
+        mock_request.pw_crypt.assert_called_with('bar')
+        mock_request.__setitem__.assert_called_with('User-Password', b'encrypted')
+        mock_client.send_packet.assert_called_with(mock_request)
+        self.assertEqual('reply', result)
+
+    def test_084f__radius_send_radsec_runs_coroutine(self):
+        """ _radius_send() proto=radsec awaits the coroutine returned by send_packet via asyncio.run """
+        self.esthandler.radius_cfg = self._radsec_radius_cfg()
+        mock_client = MagicMock()
+        mock_request = MagicMock()
+        mock_request.pw_crypt = Mock(return_value=b'encrypted')
+        mock_client.create_auth_packet = Mock(return_value=mock_request)
+
+        async def _send_packet(_pkt):
+            return 'radsec-reply'
+        mock_client.send_packet = _send_packet
+        self.assertEqual('radsec-reply', self.esthandler._radius_send(mock_client, 'foo', 'bar'))
+
     def test_085__radius_config_load_udp(self):
         """ _radius_config_load() parses a plain udp section """
         config_dic = {'RADIUS': {'server': '1.2.3.4', 'secret': 's3cr3t'}}
@@ -1495,6 +1529,38 @@ foo
         """ garbage that is not a CSR is rejected """
         self._setup_csr_user()
         self.assertFalse(self.esthandler._check_csr_data(b'not-a-real-csr'))
+
+    def test_109__check_csr_data_no_common_name(self):
+        """ a CSR carrying no common name is rejected (est_handler.py 'No common name could be found') """
+        self._setup_csr_user()
+        csr = csr_fixtures.build_csr([], ['DNS:test-client-01.example.com'])
+        self.assertFalse(self.esthandler._check_csr_data(csr))
+
+    def test_110__check_csr_data_multiple_matching_ip(self):
+        """ two IP SANs that both match ip_regex are accepted (multi-value SAN, all in range) """
+        self._setup_csr_user()
+        self.esthandler.user['ip_regex'] = r'10\.0\.0\.\d+'
+        csr = csr_fixtures.build_csr(['test-client-01'],
+                                     ['DNS:test-client-01.example.com', 'IP:10.0.0.1', 'IP:10.0.0.2'])
+        self.assertTrue(self.esthandler._check_csr_data(csr))
+
+    def test_111__check_csr_data_multiple_matching_dns(self):
+        """ two DNS SANs that both match a specific (non-'^.*') dns_regex are accepted """
+        self._setup_csr_user()
+        self.esthandler.user['dns_regex'] = r'.+\.example\.com'
+        csr = csr_fixtures.build_csr(['test-client-01'],
+                                     ['DNS:a.example.com', 'DNS:b.example.com'])
+        self.assertTrue(self.esthandler._check_csr_data(csr))
+
+    def test_112__check_csr_data_reenroll_dns_mismatch(self):
+        """ on reenroll (client cert presented) a CSR whose DNS passes the regex but differs
+            from the presented certificate is rejected by the equal_content_list binding """
+        self._setup_csr_user()
+        self.esthandler.user['dns_regex'] = r'.+\.example\.com'
+        self.esthandler.client_certificate = csr_fixtures.build_client_certificate(
+            ['test-client-01'], ['DNS:test-client-01.example.com'])
+        csr = csr_fixtures.build_csr(['test-client-01'], ['DNS:other.example.com'])
+        self.assertFalse(self.esthandler._check_csr_data(csr))
 
 
 if __name__ == '__main__':

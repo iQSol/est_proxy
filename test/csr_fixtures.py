@@ -93,8 +93,8 @@ def build_csr_with_subject_attrs(cn, sans, attributes):
 def build_csr_bad_signature(cn, sans):
     """ CSR whose self-signature does not verify (proof-of-possession failure).
 
-        Signs with a *different* key than the one embedded, then flips a byte in
-        the signature so is_signature_valid is False without breaking the DER.
+        Builds a normally-signed CSR, then flips the trailing signature byte so
+        is_signature_valid is False without otherwise breaking the DER.
     """
     body = build_csr(cns=[cn], sans=sans)
     der = bytearray(base64.b64decode(body))

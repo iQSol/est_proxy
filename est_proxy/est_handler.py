@@ -142,7 +142,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             if user['auth_backend'] == 'local':
                 authenticated = self._local_auth_check(password, user['password'])
                 if authenticated and not user['password'].startswith('$2'):
-                    self.logger.warning('_basic_auth_check(): user {0} still uses a deprecated password hash - rehashing to bcrypt'.format(username))
+                    self.logger.warning('_basic_auth_check(): user {0} still uses a deprecated password hash - rehashing'.format(username))
                     self.database.update_user_password(username, password)
             else:
                 authenticated = self._radius_auth_check(username, password)
