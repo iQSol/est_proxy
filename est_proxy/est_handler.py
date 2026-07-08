@@ -165,7 +165,7 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
             except ValueError:
                 return False
 
-        # Fallback will be dropped at some point
+        # legacy sha512 hex fallback for pre-bcrypt stored hashes
         return sha512(password.encode()).hexdigest() == stored_hash
 
     def _udp_client(self):
@@ -436,11 +436,8 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
 
         self.radius_cfg = self._radius_config_load(config_dic)
 
-        # CSR extensions the proxy tolerates (beyond subjectAltName, always allowed).
-        # Default = the extensions an MS-WCCE template overrides from the CSR anyway
-        # (keyUsage/extendedKeyUsage/basicConstraints), so clients that add them by
-        # default are not rejected. certificatePolicies is NOT in the default because
-        # the CA copies it verbatim - list it explicitly to accept the risk.
+        # extensions tolerated beyond subjectAltName (always allowed); default = those an
+        # MS-WCCE template overrides anyway. certificatePolicies omitted - CA copies it verbatim
         if 'CSRvalidation' in config_dic and 'allowed_extensions' in config_dic['CSRvalidation']:
             allowed_extensions = config_dic['CSRvalidation']['allowed_extensions']
         else:
@@ -452,15 +449,13 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
 
     def _radius_config_load(self, config_dic):
         """ parse the [RADIUS] section into a config dict (or None if not usable) """
-        # empty values count as unset so config templates can ship every key
-        # as a present-but-blank line
+        # empty values count as unset so a config template can ship blank keys
         if 'RADIUS' not in config_dic:
             return None
 
         radius = config_dic['RADIUS']
 
-        # explicit switch; a missing/empty "enabled" counts as enabled so a
-        # minimal server/secret-only section keeps working
+        # missing/empty "enabled" counts as enabled so a minimal section keeps working
         if (radius.get('enabled') or 'True').lower() != 'true':
             return None
 
@@ -469,10 +464,8 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
 
         proto = (radius.get('proto') or 'udp').lower()
 
-        # radsec defaults to the fixed secret "radsec" (RFC 6614) and a different
-        # default port; some servers (e.g. FreeRADIUS tls listeners) accept a custom
-        # value, so an explicitly configured secret is passed through.
-        # plain udp still requires an explicit shared secret.
+        # radsec has a fixed default secret "radsec" (RFC 6614) and its own default port;
+        # an explicit secret is still honored. plain udp always requires a configured secret
         if proto == 'radsec':
             default_port = 2083
             secret = radius.get('secret') or 'radsec'

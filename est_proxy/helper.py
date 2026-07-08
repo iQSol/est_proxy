@@ -28,6 +28,24 @@ from tlslite.constants import (
 	SignatureScheme
 )
 
+# subject RDNs (besides CN) a CSR may carry on enroll
+ALLOWED_SUBJECT_OIDS = {
+    NameOID.ORGANIZATION_NAME,
+    NameOID.ORGANIZATIONAL_UNIT_NAME,
+    NameOID.COUNTRY_NAME,
+    NameOID.LOCALITY_NAME,
+    NameOID.STATE_OR_PROVINCE_NAME,
+}
+
+# friendly extension names accepted in [CSRvalidation] allowed_extensions
+# subjectAltName is always allowed and does not need to be listed
+CSR_EXTENSION_NAMES = {
+    'keyusage': ExtensionOID.KEY_USAGE,
+    'extendedkeyusage': ExtensionOID.EXTENDED_KEY_USAGE,
+    'basicconstraints': ExtensionOID.BASIC_CONSTRAINTS,
+    'certificatepolicies': ExtensionOID.CERTIFICATE_POLICIES,
+}
+
 def b64decode_pad(logger, string):
     """ b64 decoding and padding of missing "=" """
     logger.debug('b64decode_pad()')
@@ -60,14 +78,10 @@ def equal_content_list(logger, list1: list, list2: list) -> bool:
 def san_check(logger, pattern: str, san_list: list) -> bool:
 
     if pattern:
-        # A regex filter constrains the VALUES a CSR may carry, so it only applies
-        # to values that are actually present. An empty list means the CSR carries
-        # no value of this type - there is nothing attacker-controlled to abuse, so
-        # it is allowed. (Set the filter to an empty/None value to disable a type
-        # entirely; '^.*' therefore means "any value, including none".)
+        # a filter only constrains values that are present; an empty san_list carries nothing
+        # attacker-controlled, so it passes. ('^.*' means any value including none)
         for san_item in san_list:
-            # fullmatch so the pattern constrains the whole value; an unanchored
-            # search would let 'test-client-01' match 'test-client-01.evil.com'.
+            # fullmatch, not search - else 'test-client-01' would match 'test-client-01.evil.com'
             if not fullmatch(pattern, str(san_item)):
                 logger.info('san_check(): "%s" does not match the configured pattern "%s" - rejecting.', str(san_item), pattern)
                 return False
@@ -77,8 +91,7 @@ def san_check(logger, pattern: str, san_list: list) -> bool:
 def get_cn_and_san(data):
 
     try:
-        # all CN values - a CSR may carry more than one CN RDN and every one of them
-        # ends up in the issued certificate, so validation must see all of them.
+        # collect every CN RDN - a CSR may carry more than one and each lands in the cert
         data_object_cn = [attribute.value for attribute in data.subject.get_attributes_for_oid(NameOID.COMMON_NAME)]
     except Exception:
         data_object_cn = []
@@ -120,14 +133,6 @@ def check_for_other_subject_attributes(data):
     """
     return [attribute for attribute in data.subject if attribute.oid != NameOID.COMMON_NAME]
 
-ALLOWED_SUBJECT_OIDS = {
-    NameOID.ORGANIZATION_NAME,
-    NameOID.ORGANIZATIONAL_UNIT_NAME,
-    NameOID.COUNTRY_NAME,
-    NameOID.LOCALITY_NAME,
-    NameOID.STATE_OR_PROVINCE_NAME,
-}
-
 def equal_subjects(logger, subject1, subject2) -> bool:
     """
         compare two x509 subjects as an unordered set of (oid, value) pairs.
@@ -138,15 +143,6 @@ def equal_subjects(logger, subject1, subject2) -> bool:
     set2 = {(attribute.oid, attribute.value) for attribute in subject2}
     logger.debug(f"Compare subjects: {set1} - {set2}")
     return set1 == set2
-
-# friendly extension names accepted in the [CSRvalidation] allowed_extensions list.
-# subjectAltName is always allowed and does not need to be listed.
-CSR_EXTENSION_NAMES = {
-    'keyusage': ExtensionOID.KEY_USAGE,
-    'extendedkeyusage': ExtensionOID.EXTENDED_KEY_USAGE,
-    'basicconstraints': ExtensionOID.BASIC_CONSTRAINTS,
-    'certificatepolicies': ExtensionOID.CERTIFICATE_POLICIES,
-}
 
 def csr_allowed_extensions(logger, extension_string):
     """ turn the config string "keyUsage, extendedKeyUsage, ..." into a set of

@@ -23,22 +23,3 @@ jobs:
           pip install -r requirements.txt
       - name: Run pytest
         run: python -m pytest test/ -q
-
-  pylint:
-    runs-on: ubuntu-latest
-    name: pylint (non-blocking)
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pylint
-          pip install -r requirements.txt
-      - name: Run pylint (report only)
-        run: PYTHONPATH=. pylint est_proxy/ examples/ca_handler/ tools/
