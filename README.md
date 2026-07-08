@@ -14,10 +14,6 @@ should be straight forward.
 As of today the following handler is maintained:
   - [Microsoft Windows Client Certificate Enrollment Protocol (MS-WCCE) via RPC/DCOM](examples/est_proxy.cfg)
 
-Other handles are available, but are not maintained:
-  - [NetGuard Certificate Manager/Insta certifier](docs/certifier.md)
-  - [Openssl](docs/openssl.md)
-  - [XCA](docs/xca.md)
 
 > [!WARNING]
 > The EST proxy has to run behind nginx. Otherwise you will have security problems.

@@ -79,4 +79,4 @@ class CAhandler(object):
 ```
 
 You can add additional methods according to your needs. You can also add configuration options to est_proxy.cfg allowing you to configure the ca_handler according to your needs.
-Check the [certifier_ca_handler.py](../examples/ca_handler/certifier_ca_handler.py) especially the `_config_load()` method for further details.
+Check the [mswcce_ca_handler.py](../examples/ca_handler/mswcce_ca_handler.py) especially the `_config_load()` method for further details.

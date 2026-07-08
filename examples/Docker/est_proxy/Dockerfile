@@ -1,25 +1,19 @@
-FROM ubuntu:22.04
+FROM python:3.12-alpine AS builder
 
-RUN apt-get update
-RUN DEBIAN_FRONTEND="noninteractive" apt-get -y install tzdata
-RUN DEBIAN_FRONTEND="noninteractive" apt-get install --no-install-recommends -y \
-    python3-pip \
-    curl \
-    openssl \
-    patch \
-    krb5-user \
-    libgssapi-krb5-2 \
-    libkrb5-3 \
-    python3-gssapi \
- && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache build-base krb5-dev libffi-dev
 
 # install python requirements
 COPY requirements.txt /tmp/requirements.txt
-RUN pip3 install -r /tmp/requirements.txt
+RUN pip3 install --prefix=/install -r /tmp/requirements.txt
 
-# patch tlslite
-COPY examples/Docker/est_proxy/tlslite-01.patch /tmp/tlslite-01.patch
-RUN patch /usr/local/lib/python3.10/dist-packages/tlslite/tlsconnection.py /tmp/tlslite-01.patch
+FROM python:3.12-alpine
+
+RUN apk add --no-cache \
+    curl \
+    openssl \
+    krb5
+
+COPY --from=builder /install /usr/local
 
 # create folders for est_proxy
 RUN mkdir -p /usr/local/est_proxy/etc && \
@@ -31,6 +25,8 @@ COPY examples/ca_handler/ /usr/local/est_proxy/examples/ca_handler
 COPY examples/est_proxy.cfg /usr/local/est_proxy/examples/
 COPY est_proxyd.py /usr/local/est_proxy/bin/est_proxyd.py
 RUN chmod a+rx /usr/local/est_proxy/bin/est_proxyd.py
+COPY tools/db_update.py /usr/local/est_proxy/bin/db_update.py
+RUN chmod a+rx /usr/local/est_proxy/bin/db_update.py
 
 COPY examples/Docker/est_proxy/docker-entrypoint.sh /docker-entrypoint.sh
 RUN chmod a+rx /docker-entrypoint.sh

@@ -54,8 +54,7 @@ def srv_run(logger, server_class=SecureServer, handler_class=ESTSrvHandler, addr
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        logger.info('srv_run(): keyboard interrupt}'.format(address, port))
-        pass
+        logger.info('srv_run(): keyboard interrupt')
     httpd.server_close()
     logger.info('stopping est_proxy on {0}:{1}'.format(address, port))
 

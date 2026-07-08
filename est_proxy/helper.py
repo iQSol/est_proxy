@@ -2,39 +2,58 @@
 # -*- coding: utf-8 -*-
 """ helper functions for est_proxy """
 from __future__ import print_function
-import calendar
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 import logging
 import configparser
 import base64
 import textwrap
-import OpenSSL
+from re import fullmatch
 import pytz
 from cryptography import x509
-from cryptography.x509.oid import NameOID, ExtensionOID
-from re import search
-from tlslite import SessionCache, HandshakeSettings, VerifierDB
-from tlslite.constants import CipherSuite, HashAlgorithm, SignatureAlgorithm, GroupName, SignatureScheme
+from cryptography.x509.oid import (
+	NameOID,
+	ExtensionOID,
+	AttributeOID
+)
+from tlslite import (
+	SessionCache,
+	HandshakeSettings
+)
+from tlslite.constants import (
+	CipherSuite,
+	HashAlgorithm,
+	SignatureAlgorithm,
+	GroupName,
+	SignatureScheme
+)
+
+# subject RDNs (besides CN) a CSR may carry on enroll
+ALLOWED_SUBJECT_OIDS = {
+    NameOID.ORGANIZATION_NAME,
+    NameOID.ORGANIZATIONAL_UNIT_NAME,
+    NameOID.COUNTRY_NAME,
+    NameOID.LOCALITY_NAME,
+    NameOID.STATE_OR_PROVINCE_NAME,
+}
+
+# friendly extension names accepted in [CSRvalidation] allowed_extensions
+# subjectAltName is always allowed and does not need to be listed
+CSR_EXTENSION_NAMES = {
+    'keyusage': ExtensionOID.KEY_USAGE,
+    'extendedkeyusage': ExtensionOID.EXTENDED_KEY_USAGE,
+    'basicconstraints': ExtensionOID.BASIC_CONSTRAINTS,
+    'certificatepolicies': ExtensionOID.CERTIFICATE_POLICIES,
+}
 
 def b64decode_pad(logger, string):
     """ b64 decoding and padding of missing "=" """
     logger.debug('b64decode_pad()')
     try:
         b64dec = base64.urlsafe_b64decode(string + '=' * (4 - len(string) % 4))
-    except BaseException:
+    except Exception:
         b64dec = b'ERR: b64 decoding error'
     return b64dec.decode('utf-8')
-
-def b64_decode(logger, string):
-    """ b64 decoding """
-    logger.debug('b64decode()')
-    return convert_byte_to_string(base64.b64decode(string))
-
-def b64_encode(logger, string):
-    """ encode a bytestream in base64 """
-    logger.debug('b64_encode()')
-    return base64.b64encode(convert_string_to_byte(string))
 
 def b64_url_recode(logger, string):
     """ recode base64_url to base64 """
@@ -59,13 +78,12 @@ def equal_content_list(logger, list1: list, list2: list) -> bool:
 def san_check(logger, pattern: str, san_list: list) -> bool:
 
     if pattern:
-        if not san_list:
-            logger.debug('SAN list empty.')
-            return True
-
+        # a filter only constrains values that are present; an empty san_list carries nothing
+        # attacker-controlled, so it passes. ('^.*' means any value including none)
         for san_item in san_list:
-            if not search(pattern, str(san_item)):
-                logger.debug(f"Pattern not matching. {pattern} - {str(san_item)}")
+            # fullmatch, not search - else 'test-client-01' would match 'test-client-01.evil.com'
+            if not fullmatch(pattern, str(san_item)):
+                logger.info('san_check(): "%s" does not match the configured pattern "%s" - rejecting.', str(san_item), pattern)
                 return False
 
     return True
@@ -73,13 +91,14 @@ def san_check(logger, pattern: str, san_list: list) -> bool:
 def get_cn_and_san(data):
 
     try:
-        data_object_cn = [data.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value]
-    except:
+        # collect every CN RDN - a CSR may carry more than one and each lands in the cert
+        data_object_cn = [attribute.value for attribute in data.subject.get_attributes_for_oid(NameOID.COMMON_NAME)]
+    except Exception:
         data_object_cn = []
 
     try:
         data_extensions = data.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME)
-    except:
+    except Exception:
         data_extensions = None
 
     if data_extensions:
@@ -99,7 +118,7 @@ def check_for_other_sans(data):
     other_sans = []
     try:
         sans = data.extensions.get_extension_for_class(x509.SubjectAlternativeName).value
-    except:
+    except Exception:
         sans = []
 
     for san in sans:
@@ -107,6 +126,79 @@ def check_for_other_sans(data):
             other_sans.append(san)
 
     return other_sans
+
+def check_for_other_subject_attributes(data):
+    """
+        return subject RDNs that are not a common name (O, OU, ...)
+    """
+    return [attribute for attribute in data.subject if attribute.oid != NameOID.COMMON_NAME]
+
+def equal_subjects(logger, subject1, subject2) -> bool:
+    """
+        compare two x509 subjects as an unordered set of (oid, value) pairs.
+        used on reenroll to allow a CSR to carry extra subject attributes (O/OU/...)
+        as long as they are identical to the presented client certificate's subject.
+    """
+    set1 = {(attribute.oid, attribute.value) for attribute in subject1}
+    set2 = {(attribute.oid, attribute.value) for attribute in subject2}
+    logger.debug(f"Compare subjects: {set1} - {set2}")
+    return set1 == set2
+
+def csr_allowed_extensions(logger, extension_string):
+    """ turn the config string "keyUsage, extendedKeyUsage, ..." into a set of
+        tolerated extension OIDs. subjectAltName is always included. A name may
+        also be a dotted OID. Unknown/blank entries are skipped with a log line. """
+    allowed = {ExtensionOID.SUBJECT_ALTERNATIVE_NAME}
+    for raw in (extension_string or '').split(','):
+        name = raw.strip()
+        if not name:
+            continue
+        key = name.lower()
+        if key in CSR_EXTENSION_NAMES:
+            allowed.add(CSR_EXTENSION_NAMES[key])
+        elif name[0].isdigit():
+            try:
+                allowed.add(x509.ObjectIdentifier(name))
+            except ValueError:
+                logger.error('csr_allowed_extensions(): invalid OID "%s" - ignoring.', name)
+        else:
+            logger.error('csr_allowed_extensions(): unknown CSR extension "%s" - ignoring.', name)
+    return allowed
+
+def check_for_other_extensions(data, allowed_oids=None):
+    """ return CSR extensions that are not on the allowlist.
+        allowed_oids defaults to {subjectAltName}; the caller passes a wider set
+        built by csr_allowed_extensions() from config. fails closed: a CSR whose
+        extensions cannot be parsed (e.g. duplicate extensions) yields a non-empty
+        result so the caller rejects it. """
+    if allowed_oids is None:
+        allowed_oids = {ExtensionOID.SUBJECT_ALTERNATIVE_NAME}
+    try:
+        extensions = list(data.extensions)
+    except Exception:
+        return ['unparseable extensions']
+
+    return [extension for extension in extensions if extension.oid not in allowed_oids]
+
+def check_for_other_attributes(data):
+    """
+        return CSR attributes that are not on the allowlist.
+        only extensionRequest and challengePassword are permitted; anything else
+        (notably the Microsoft szOID_CERT_EXTENSIONS attribute, which MS CAs honor
+        but python-cryptography does not surface as an extension) is rejected.
+        fails closed on parse errors.
+    """
+    allowed_oids = {
+        # PKCS#9 extensionRequest - the standard way to carry extensions in a CSR
+        x509.ObjectIdentifier('1.2.840.113549.1.9.14'),
+        AttributeOID.CHALLENGE_PASSWORD,
+    }
+    try:
+        attributes = list(data.attributes)
+    except Exception:
+        return ['unparseable attributes']
+
+    return [attribute for attribute in attributes if attribute.oid not in allowed_oids]
 
 def get_certificate_information(pem_data):
 
@@ -124,8 +216,6 @@ def build_pem_file(logger, existing, certificate, wrap, csr=False):
     logger.debug('build_pem_file()')
     if csr:
         pem_file = '-----BEGIN CERTIFICATE REQUEST-----\n{0}\n-----END CERTIFICATE REQUEST-----\n'.format(textwrap.fill(convert_byte_to_string(certificate), 64))
-        # req = OpenSSL.crypto.load_certificate_request(OpenSSL.crypto.FILETYPE_ASN1, base64.b64decode(certificate))
-        # pem_file = convert_byte_to_string(OpenSSL.crypto.dump_certificate_request(OpenSSL.crypto.FILETYPE_PEM,req))
     else:
         if existing:
             if wrap:
@@ -148,77 +238,6 @@ def ca_handler_get(logger, ca_handler_name):
     logger.debug('ca_handler_get() ended with: {0}'.format(ca_handler_name))
     return ca_handler_name
 
-def cert_pem2der(pem_file):
-    """ convert certificate pem to der """
-    certobj = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, pem_file)
-    return OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_ASN1, certobj)
-
-def cert_san_get(logger, certificate, recode=True):
-    """ get subject alternate names from certificate """
-    logger.debug('cert_san_get()')
-    if recode:
-        pem_file = build_pem_file(logger, None, b64_url_recode(logger, certificate), True)
-    else:
-        pem_file = certificate
-
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, pem_file)
-    san = []
-    ext_count = cert.get_extension_count()
-    for i in range(0, ext_count):
-        ext = cert.get_extension(i)
-        if 'subjectAltName' in str(ext.get_short_name()):
-            san_list = ext.__str__().split(',')
-            for san_name in san_list:
-                san_name = san_name.rstrip()
-                san_name = san_name.lstrip()
-                san.append(san_name)
-    logger.debug('cert_san_get() ended')
-    return san
-
-def cert_eku_get(logger, certificate, recode=True):
-    """ get extended key usage from certificate """
-    logger.debug('cert_eku_get()')
-    if recode:
-        pem_file = build_pem_file(logger, None, b64_url_recode(logger, certificate), True)
-    else:
-        pem_file = certificate
-
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, pem_file)
-    eku = None
-    ext_count = cert.get_extension_count()
-    for i in range(0, ext_count):
-        ext = cert.get_extension(i)
-        if 'extendedKeyUsage' in str(ext.get_short_name()):
-            eku = cert.get_extension(i).get_data()
-    logger.debug('cert_eku_get() ended')
-    return eku
-
-def cert_extensions_get(logger, certificate, recode=True):
-    """ get extenstions from certificate certificate """
-    logger.debug('cert_extensions_get()')
-    if recode:
-        pem_file = build_pem_file(logger, None, b64_url_recode(logger, certificate), True)
-    else:
-        pem_file = certificate
-
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, pem_file)
-    extension_list = []
-    ext_count = cert.get_extension_count()
-    for i in range(0, ext_count):
-        ext = cert.get_extension(i)
-        extension_list.append(convert_byte_to_string(base64.b64encode(ext.get_data())))
-
-    logger.debug('cert_extensions_get() ended with: {0}'.format(extension_list))
-    return extension_list
-
-def cert_serial_get(logger, certificate):
-    """ get serial number form certificate """
-    logger.debug('cert_serial_get()')
-    pem_file = build_pem_file(logger, None, b64_url_recode(logger, certificate), True)
-    cert = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, pem_file)
-    logger.debug('cert_serial_get() ended with: {0}'.format(cert.get_serial_number()))
-    return cert.get_serial_number()
-
 def config_load(logger=None, mfilter=None, cfg_file=os.path.dirname(__file__)+'/'+'est_proxy.cfg'):
     """ small configparser wrappter to load a config file """
     if logger:
@@ -227,7 +246,7 @@ def config_load(logger=None, mfilter=None, cfg_file=os.path.dirname(__file__)+'/
     config.optionxform = str
     try:
         config.read(cfg_file)
-    except BaseException:
+    except Exception:
         config = {}
 
     return config
@@ -246,8 +265,6 @@ def connection_log(logger, connection, seconds):
         logger.debug(" No client certificate provided by peer")
     if connection.session.serverCertChain:
         logger.debug(" Server X.509 SHA1 fingerprint: %s", connection.session.serverCertChain.getFingerprint())
-    if connection.session.srpUsername:
-        logger.debug(" Client SRP username: %s", connection.session.srpUsername)
     if connection.version >= (3, 3) and connection.serverSigAlg is not None:
         scheme = SignatureScheme.toRepr(connection.serverSigAlg)
         if scheme is None:
@@ -270,7 +287,7 @@ def convert_byte_to_string(value):
     if hasattr(value, 'decode'):
         try:
             return value.decode()
-        except BaseException:
+        except Exception:
             return value
     else:
         return value
@@ -283,39 +300,6 @@ def convert_string_to_byte(value):
         result = value
     return result
 
-def csr_cn_get(logger, csr):
-    """ get cn from certificate request """
-    logger.debug('CAhandler.csr_cn_get()')
-    pem_file = build_pem_file(logger, None, csr, True, True)
-    req = OpenSSL.crypto.load_certificate_request(OpenSSL.crypto.FILETYPE_PEM, pem_file)
-    subject = req.get_subject()
-    components = dict(subject.get_components())
-    result = None
-    if 'CN' in components:
-        result = components['CN']
-    elif b'CN' in components:
-        result = convert_byte_to_string(components[b'CN'])
-
-    logger.debug('CAhandler.csr_cn_get() ended with: {0}'.format(result))
-    return result
-
-def csr_san_get(logger, csr):
-    """ get subject alternate names from certificate """
-    logger.debug('cert_san_get()')
-    san = []
-    if csr:
-        pem_file = build_pem_file(logger, None, b64_url_recode(logger, csr), True, True)
-        req = OpenSSL.crypto.load_certificate_request(OpenSSL.crypto.FILETYPE_PEM, pem_file)
-        for ext in req.get_extensions():
-            if 'subjectAltName' in str(ext.get_short_name()):
-                san_list = ext.__str__().split(',')
-                for san_name in san_list:
-                    san_name = san_name.rstrip()
-                    san_name = san_name.lstrip()
-                    san.append(san_name)
-    logger.debug('cert_san_get() ended with: {0}'.format(str(san)))
-    return san
-
 def logger_setup(debug, cfg_file=None):
     """ setup logger """
     if debug:
@@ -327,7 +311,7 @@ def logger_setup(debug, cfg_file=None):
     try:
         config_dic = config_load(cfg_file=cfg_file)
         log_format = config_dic.get('Logging', 'log_format', fallback='%(message)s')
-    except BaseException:
+    except Exception:
         log_format = '%(message)s'
 
     logging.basicConfig(format=log_format, datefmt="%Y-%m-%d %H:%M:%S", level=log_mode)
@@ -339,15 +323,7 @@ def hssrv_options_get(logger, config_dic):
     logger.debug('hssrv_options_get()')
 
     hs_settings = HandshakeSettings()
-
-    #  settings.useExperimentalTackExtension=True
-    # settings.dhParams = dhparam
-    # if ssl3:
-    #    settings.minVersion = (3, 0)
-    #
-    # if cipherlist:
-    #    settings.cipherNames = [item for cipher in cipherlist
-    #                            for item in cipher.split(',')]
+    hs_settings.minVersion = (3, 3)
 
     option_dic = {}
     if 'Daemon' in config_dic:
@@ -357,28 +333,18 @@ def hssrv_options_get(logger, config_dic):
             option_dic['sessionCache'] = SessionCache()
             option_dic['alpn'] = [bytearray(b'http/1.1')]
             option_dic['settings'] = hs_settings
-            option_dic['reqCert'] = True
             option_dic['sni'] = None
         else:
             logger.error('Helper.hssrv_options_get(): incomplete Daemon configuration in config file')
     else:
         logger.error('Helper.hssrv_options_get(): Daemon specified but not configured in config file')
 
-    if 'SRP' in config_dic:
-        if 'userdb' in config_dic['SRP']:
-            try:
-                srp_db = VerifierDB(config_dic['SRP']['userdb'])
-                srp_db.open()
-                option_dic['verifierDB'] = srp_db
-            except BaseException as err:
-                logger.error('Helper.hssrv_options_get(): SRP database {0} could not get loaded.'.format(config_dic['SRP']['userdb']))
-                logger.error('Helper.hssrv_options_get(): Error: {0}'.format(err))
     logger.debug('hssrv_options_get() ended')
     return option_dic
 
 def uts_now():
     """ return unixtimestamp in utc """
-    return calendar.timegm(datetime.utcnow().utctimetuple())
+    return int(datetime.now(timezone.utc).timestamp())
 
 def uts_to_date_utc(uts, tformat='%Y-%m-%dT%H:%M:%SZ'):
     """ convert unix timestamp to date format """

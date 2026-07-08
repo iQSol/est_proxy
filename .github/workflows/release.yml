@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    name: build image and publish release
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive and validate version
+        run: |
+          FILE_VER=$(grep -i __version__ est_proxy/version.py | head -n1 | sed "s/__version__ = //; s/'//g" | tr -d ' ')
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          if [ "$FILE_VER" != "$TAG_VER" ]; then
+            echo "tag $GITHUB_REF_NAME does not match version.py ($FILE_VER)"
+            exit 1
+          fi
+          echo "VERSION=$FILE_VER" >> "$GITHUB_ENV"
+
+      - name: Build image
+        run: docker build -t est_proxy:latest -f examples/Docker/est_proxy/Dockerfile .
+
+      - name: Save and compress image
+        run: docker save est_proxy:latest | gzip > est_proxy.tar.gz
+
+      - name: Create release and attach image
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: est_proxy ${{ env.VERSION }}
+          body: |
+            Docker image for est_proxy ${{ env.VERSION }}.
+            Load with: `docker load -i est_proxy.tar.gz`
+            [Changelog](https://github.com/iQSol/est_proxy/blob/main/CHANGES.md)
+          files: est_proxy.tar.gz
