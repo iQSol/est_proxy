@@ -17,6 +17,10 @@ if __name__ == '__main__':
     logger = logger_setup(args.debug)
 
     db = Database(args.dbfile)
-    logger.info('db_update.py: dbversion before update: %s', db.dbversion_get())
+    before = db.dbversion_get()
     db.db_update(logger)
-    logger.info('db_update.py: dbversion after update: %s', db.dbversion_get())
+    after = db.dbversion_get()
+    if before != after:
+        logger.info('db_update.py: dbversion updated %s -> %s', before, after)
+    else:
+        logger.info('db_update.py: already up to date (dbversion %s)', after)

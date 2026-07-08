@@ -49,13 +49,10 @@ class Database():
             END
             ''')
 
-        self.__update_certificates_fk()
-        self.__update_users_auth_backend()
+        self.__update_certificates_fk(logger)
+        self.__update_users_auth_backend(logger)
 
         self.__dbversion_set()
-
-        if logger:
-            logger.info('Database.db_update(): dbversion set to %s', __dbversion__)
 
         self.__commit_and_close()
 
@@ -280,7 +277,7 @@ class Database():
 
         self.__commit_and_close()
 
-    def __update_certificates_fk(self) -> None:
+    def __update_certificates_fk(self, logger: Any = None) -> None:
         """ rebuild the certificates table if its FK still points at the (non-existent) users.user_id column """
 
         self.db_cur.execute('''PRAGMA foreign_key_list(certificates)''')
@@ -288,6 +285,8 @@ class Database():
         legacy_fk: bool = any(row['table'] == 'users' and row['to'] == 'user_id' for row in fk_list)
 
         if legacy_fk:
+            if logger:
+                logger.info('Database.db_update(): rebuilding certificates table - fixing user_id foreign key')
             self.db_cur.execute('''ALTER TABLE certificates RENAME TO tmp_certificates''')
             self.db_cur.execute('''
                 CREATE TABLE certificates
@@ -305,13 +304,15 @@ class Database():
                 ''')
             self.db_cur.execute('''DROP TABLE tmp_certificates''')
 
-    def __update_users_auth_backend(self) -> None:
+    def __update_users_auth_backend(self, logger: Any = None) -> None:
         """ add the auth_backend column to the users table if missing """
 
         self.db_cur.execute('''PRAGMA table_info(users)''')
         column_list: Any = [column['name'] for column in self.db_cur.fetchall()]
 
         if 'auth_backend' not in column_list:
+            if logger:
+                logger.info('Database.db_update(): alter users table - add auth_backend column')
             self.db_cur.execute('''ALTER TABLE users ADD COLUMN auth_backend TEXT NOT NULL DEFAULT 'local' ''')
 
     def __dbversion_set(self) -> None:

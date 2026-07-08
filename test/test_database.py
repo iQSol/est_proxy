@@ -7,6 +7,7 @@ import sqlite3
 import sys
 import os
 import tempfile
+from unittest.mock import Mock
 
 sys.path.insert(0, '.')
 sys.path.insert(1, '..')
@@ -110,6 +111,35 @@ class DatabaseTestCases(unittest.TestCase):
         db.db_update()
 
         self.assertIn('auth_backend', self._users_columns(self.db_file))
+
+    def _info_messages(self, logger):
+        """ helper: list of the message strings passed to logger.info """
+        return [call.args[0] for call in logger.info.call_args_list]
+
+    def test_legacy_db_update_logs_auth_backend_column_add(self):
+        """ adding the auth_backend column on a legacy db logs an info message """
+        self._create_legacy_db()
+        logger = Mock()
+        self.Database(self.db_file).db_update(logger)
+        self.assertIn('Database.db_update(): alter users table - add auth_backend column',
+                      self._info_messages(logger))
+
+    def test_legacy_db_update_logs_certificates_fk_rebuild(self):
+        """ rebuilding the certificates table on a legacy db logs an info message """
+        self._create_legacy_db()
+        logger = Mock()
+        self.Database(self.db_file).db_update(logger)
+        self.assertIn('Database.db_update(): rebuilding certificates table - fixing user_id foreign key',
+                      self._info_messages(logger))
+
+    def test_up_to_date_db_update_logs_no_migration_messages(self):
+        """ running db_update() on an already-current db logs no per-migration messages """
+        db = self.Database(self.db_file)   # construction already migrates to current
+        logger = Mock()
+        db.db_update(logger)
+        messages = self._info_messages(logger)
+        self.assertNotIn('Database.db_update(): alter users table - add auth_backend column', messages)
+        self.assertNotIn('Database.db_update(): rebuilding certificates table - fixing user_id foreign key', messages)
 
     def test_legacy_db_existing_users_default_to_local_auth_backend(self):
         """ users created before the migration default to auth_backend 'local' """
