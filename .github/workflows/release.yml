@@ -35,9 +35,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          name: est_proxy ${{ env.VERSION }}
+          name: ${{ github.ref_name }}
           body: |
-            Docker image for est_proxy ${{ env.VERSION }}.
+            Docker image for est_proxy ${{ github.ref_name }}.
             Load with: `docker load -i est_proxy.tar.gz`
             [Changelog](https://github.com/iQSol/est_proxy/blob/main/CHANGES.md)
           files: est_proxy.tar.gz
