@@ -209,6 +209,11 @@ KxEs3JidvpZrl3o23LMGEPoJs3zIuowTa217PHwdBw4UwtD7KxJK/+344A==
         file_name = 'foo\\foo.py'
         self.assertEqual('foo.foo', self.ca_handler_get(self.logger, file_name))
 
+    def test_031_helper_ca_handler_get(self):
+        """ only the .py suffix is removed, not trailing p or y characters """
+        file_name = 'examples/ca_handler/happy.py'
+        self.assertEqual('examples.ca_handler.happy', self.ca_handler_get(self.logger, file_name))
+
     def test_032_helper_convert_byte_to_string(self):
         """ convert byte2string for a string value """
         self.assertEqual('foo', self.convert_byte_to_string('foo'))

@@ -399,6 +399,39 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         self.logger.debug('ESTSrvHandler._cert_enroll() ended with: {0}'.format(bool(cert_pkcs7)))
         return (error, cert_pkcs7)
 
+    def _ca_handler_module_load(self, config_dic):
+        """ import the CA handler module named by handler_module or handler_file """
+        if 'CAhandler' not in config_dic:
+            self.logger.error('ESTSrvHandler._config_load(): CAhandler configuration missing in config file')
+            return None
+
+        if 'handler_module' in config_dic['CAhandler'] and config_dic['CAhandler']['handler_module']:
+            handler_name = config_dic['CAhandler']['handler_module']
+            module_name = handler_name.strip()
+        elif 'handler_file' in config_dic['CAhandler']:
+            handler_name = config_dic['CAhandler']['handler_file']
+            module_name = ca_handler_get(self.logger, handler_name)
+        else:
+            handler_name = None
+            module_name = None
+
+        if module_name:
+            try:
+                return importlib.import_module(module_name)
+            except Exception as err_:
+                self.logger.error('ESTSrvHandler._config_load(): CAhandler {0} could not get loaded. with error: {1}\nLoading default hander...'.format(handler_name, err_))
+                try:
+                    return importlib.import_module('est_proxy.ca_handler')
+                except Exception:
+                    self.logger.error('ESTSrvHandler._config_load():  Loading default handler failed.')
+                    return None
+
+        try:
+            return importlib.import_module('est_proxy.ca_handler')
+        except Exception as err_:
+            self.logger.error('ESTSrvHandler._config_load(): default CAhandler could not get loaded. err: {0}'.format(err_))
+            return None
+
     def _config_load(self):
         """ load config from file """
         self.logger.debug('ESTSrvHandler._config_load()')
@@ -409,35 +442,15 @@ class ESTSrvHandler(BaseHTTPRequestHandler):
         else:
             self.openssl_bin = 'openssl'
 
-        if 'CAhandler' in config_dic and 'handler_file' in config_dic['CAhandler']:
-            try:
-                ca_handler_module = importlib.import_module(ca_handler_get(self.logger, config_dic['CAhandler']['handler_file']))
-            except Exception as err_:
-                self.logger.error('ESTSrvHandler._config_load(): CAhandler {0} could not get loaded. with error: {1}\nLoading default hander...'.format(config_dic['CAhandler']['handler_file'], err_))
-                try:
-                    ca_handler_module = importlib.import_module('est_proxy.ca_handler')
-                except Exception:
-                    self.logger.error('ESTSrvHandler._config_load():  Loading default handler failed.')
-                    ca_handler_module = None
-        else:
-            if 'CAhandler' in config_dic:
-                try:
-                    ca_handler_module = importlib.import_module('est_proxy.ca_handler')
-                except Exception as err_:
-                    self.logger.error('ESTSrvHandler._config_load(): default CAhandler could not get loaded. err: {0}'.format(err_))
-                    ca_handler_module = None
-            else:
-                self.logger.error('ESTSrvHandler._config_load(): CAhandler configuration missing in config file')
-                ca_handler_module = None
-
+        ca_handler_module = self._ca_handler_module_load(config_dic)
         if ca_handler_module:
             # store handler in variable
             self.cahandler = ca_handler_module.CAhandler
 
         self.radius_cfg = self._radius_config_load(config_dic)
 
-        # extensions tolerated beyond subjectAltName (always allowed); default = those an
-        # MS-WCCE template overrides anyway. certificatePolicies omitted - CA copies it verbatim
+        # extensions tolerated beyond subjectAltName (always allowed); default = those a
+        # Microsoft CA template overrides anyway. certificatePolicies omitted - CA copies it verbatim
         if 'CSRvalidation' in config_dic and 'allowed_extensions' in config_dic['CSRvalidation']:
             allowed_extensions = config_dic['CSRvalidation']['allowed_extensions']
         else:

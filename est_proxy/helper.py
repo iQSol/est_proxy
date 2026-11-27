@@ -232,7 +232,7 @@ def build_pem_file(logger, existing, certificate, wrap, csr=False):
 def ca_handler_get(logger, ca_handler_name):
     """ turn handler-filename into a python path """
     logger.debug('ca_handler_get({0})'.format(ca_handler_name))
-    ca_handler_name = ca_handler_name.rstrip('.py')
+    ca_handler_name = ca_handler_name.removesuffix('.py')
     ca_handler_name = ca_handler_name.replace('/', '.')
     ca_handler_name = ca_handler_name.replace('\\', '.')
     logger.debug('ca_handler_get() ended with: {0}'.format(ca_handler_name))

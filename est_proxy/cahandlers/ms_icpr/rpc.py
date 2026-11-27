@@ -3,7 +3,7 @@
 import logging
 from impacket import uuid
 from impacket.dcerpc.v5 import epm, rpcrt, transport
-from examples.ca_handler.ms_wcce.target import Target
+from est_proxy.cahandlers.ms_icpr.target import Target
 
 
 def get_dce_rpc_from_string_binding(

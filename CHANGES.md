@@ -2,6 +2,33 @@
 
 All notable changes to est_proxy are documented here.
 
+## [0.3.0]
+
+### Breaking
+- The MS-WCCE CA handler is removed. The new MS-ICPR CA handler
+  `est_proxy.cahandlers.msicpr_ca_handler` replaces it. The old handler
+  already used the MS-ICPR RPC interface. Only the name and the location change.
+- `examples/ca_handler/mswcce_ca_handler.py` and `examples/ca_handler/ms_wcce/`
+  do not exist anymore. Update existing configurations with this command:
+
+  ```bash
+  sed -i 's|^handler_file: examples/ca_handler/mswcce_ca_handler\.py$|handler_module: est_proxy.cahandlers.msicpr_ca_handler|' est_proxy.cfg
+  ```
+
+  All other `CAhandler` options stay the same.
+
+### Added
+- `handler_module` option in the `CAhandler` section. It loads a CA handler
+  from a Python module path and has priority over `handler_file`.
+
+### Changed
+- The MS-ICPR handler uses the NDR structures of `impacket.dcerpc.v5.icpr`.
+  impacket 0.13.1 or higher is necessary.
+- The log shows the CA reason for a denied or pending request, for example
+  `CERTSRV_E_KEY_LENGTH`. Before, the log showed a certificate parse error.
+- `handler_file` values that end in `p` or `y` before `.py` load correctly.
+- `dnspython` is a new explicit dependency.
+
 ## [0.2.0]
 
 ### Added

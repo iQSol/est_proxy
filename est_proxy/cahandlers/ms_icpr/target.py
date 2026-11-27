@@ -1,5 +1,5 @@
 """ target class """
-# pylint: disable=C0209, C0415, R0913, W1201
+# pylint: disable=C0209, R0913, W1201
 import logging
 import socket
 from dns.resolver import Resolver
@@ -22,24 +22,6 @@ class DnsResolver:
         self.resolver = Resolver()
 
         self.mappings = {}
-
-    @staticmethod
-    def from_options(options, target) -> "DnsResolver":
-        """ setup resolver object from given options """
-        self = DnsResolver()
-
-        # We can't put all possible nameservers in the list of nameservers, since
-        # the resolver will fail if one of them fails
-        nameserver = options.ns
-        if nameserver is None:
-            nameserver = target.dc_ip
-
-        if nameserver is not None:
-            self.resolver.nameservers = [nameserver]
-        # pylint: disable=W0201
-        self.use_tcp = options.dns_tcp
-
-        return self
 
     @staticmethod
     def create(
@@ -113,7 +95,6 @@ class Target:
         password: str = None,
         target_ip: str = None,
         remote_name: str = None,
-        no_pass: bool = False,
         dc_ip: str = None,
         ns_: str = None,
         dns_tcp: bool = False,
@@ -121,11 +102,6 @@ class Target:
     ):
         if domain is None:
             domain = ""
-
-        if password == "" and username != "" and no_pass is not True:
-            from getpass import getpass
-
-            password = getpass("Password:")
 
         lmhash = nthash = ""
 
