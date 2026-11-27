@@ -1,18 +1,16 @@
 # -*- coding: utf-8 -*-
-""" CA handler for Microsoft Windows Client Certificate Enrollment Protocol (MS-WCCE) """
+""" CA handler for Microsoft ICertPassage Remote Protocol (MS-ICPR) """
 from __future__ import print_function
-from typing import Tuple
-
-# pylint: disable=e0401, e0611
-from examples.ca_handler.ms_wcce.target import Target
-from examples.ca_handler.ms_wcce.request import Request
+from typing import Optional, Tuple
 
 # pylint: disable=E0401
+from est_proxy.cahandlers.ms_icpr.request import Request
+from est_proxy.cahandlers.ms_icpr.target import Target
 from est_proxy.helper import config_load, convert_byte_to_string, convert_string_to_byte, build_pem_file
 
 
 class CAhandler(object):
-    """MS-WCCE CA handler"""
+    """ MS-ICPR CA handler """
 
     def __init__(self, cfg_file=None, logger=None, template=None):
         self.cfg_file = cfg_file
@@ -24,21 +22,21 @@ class CAhandler(object):
         self.target_domain = None
         self.domain_controller = None
         self.ca_name = None
-        self.ca_bundle = False
+        self.ca_bundle = None
         self.use_kerberos = False
         self.timeout = 5
 
     def __enter__(self):
-        """Makes CAhandler a Context Manager"""
+        """ Makes CAhandler a Context Manager """
         if not self.host:
             self._config_load()
         return self
 
     def __exit__(self, *args):
-        """close the connection at the end of the context"""
+        """ close the connection at the end of the context """
 
     def _config_load(self):
-        """" load config from file """
+        """ load config from file """
         self.logger.debug('CAhandler._config_load()')
 
         config_dic = config_load(self.logger, cfg_file=self.cfg_file)
@@ -54,7 +52,7 @@ class CAhandler(object):
 
         self.logger.debug('CAhandler._config_load() ended')
 
-    def _file_load(self, bundle: str) -> str:
+    def _file_load(self, bundle: str) -> Optional[str]:
         """ load file """
         file_ = None
         try:
@@ -65,7 +63,7 @@ class CAhandler(object):
         return file_
 
     def request_create(self) -> Request:
-        """create request object """
+        """ create request object """
         self.logger.debug('CAhandler.request_create()')
 
         target = Target(
@@ -85,78 +83,56 @@ class CAhandler(object):
 
         self.logger.debug('CAhandler.request_create() ended')
         return request
-    def ca_certs_get(self):
+
+    def ca_certs_get(self) -> Optional[str]:
         """ get ca certificates """
         self.logger.debug('CAhandler.ca_certs_get()')
 
         ca_pem = None
+        if self.ca_bundle:
+            ca_pem = self._file_load(self.ca_bundle)
 
-        ca_pem = self._file_load(self.ca_bundle)
-
+        self.logger.debug('CAhandler.ca_certs_get() ended with: %s', bool(ca_pem))
         return ca_pem
 
-    def enroll(self, csr: str) -> Tuple[str, str, str]:
-        """enroll certificate via MS-WCCE"""
-        self.logger.debug("CAhandler.enroll(%s)", self.template)
+    def enroll(self, csr: str) -> Tuple[Optional[str], Optional[str], None]:
+        """ enroll certificate via MS-ICPR """
+        self.logger.debug('CAhandler.enroll(%s)', self.template)
 
         error = None
         cert_raw = None
 
-        if not (self.host and self.user and self.password and self.template):
-            self.logger.error("Config incomplete")
-            return ("Config incomplete", None, None)
+        if not (self.host and self.user and self.password and self.template and self.ca_name):
+            self.logger.error('Config incomplete')
+            return ('Config incomplete', None, None)
 
-        # create request
-        request = self.request_create()
-
-        # recode csr
         csr = build_pem_file(self.logger, None, csr, 64, True)
 
         try:
-            # request certificate
+            request = self.request_create()
             cert_raw = convert_byte_to_string(
                 request.get_cert(convert_string_to_byte(csr))
             )
-            # replace crlf with lf
-            cert_raw = cert_raw.replace("\r\n", "\n")
+            cert_raw = cert_raw.replace('\r\n', '\n')
         except Exception as err_:
             cert_raw = None
-            error = f"{err_}"
-            self.logger.error("ca_server.get_cert() failed with error: %s", err_)
+            error = f'{err_}'
+            self.logger.error('CAhandler.enroll(): certificate request failed: %s', err_)
 
-        self.logger.debug("Certificate.enroll() ended")
+        self.logger.debug('CAhandler.enroll() ended')
         return (error, cert_raw, None)
 
-    def poll(self, _cert_name: str, poll_identifier: str, _csr: str) -> Tuple[str, str, str, str, bool]:
-        """poll status of pending CSR and download certificates"""
-        self.logger.debug("CAhandler.poll()")
-
-        error = "Method not implemented."
-        cert_bundle = None
-        cert_raw = None
-        rejected = False
-
-        self.logger.debug("CAhandler.poll() ended")
-        return (error, cert_bundle, cert_raw, poll_identifier, rejected)
+    def poll(self, _cert_name: str, poll_identifier: str, _csr: str) -> Tuple[str, None, None, str, bool]:
+        """ poll status of pending CSR and download certificates """
+        self.logger.debug('CAhandler.poll()')
+        return ('Method not implemented.', None, None, poll_identifier, False)
 
     def revoke(self, _cert: str, _rev_reason: str, _rev_date: str) -> Tuple[int, str, str]:
-        """revoke certificate"""
-        self.logger.debug("CAhandler.tsg_id_lookup()")
-        # get serial from pem file and convert to formated hex
+        """ revoke certificate """
+        self.logger.debug('CAhandler.revoke()')
+        return (500, 'urn:ietf:params:acme:error:serverInternal', 'Revocation is not supported.')
 
-        code = 500
-        message = "urn:ietf:params:acme:error:serverInternal"
-        detail = "Revocation is not supported."
-
-        return (code, message, detail)
-
-    def trigger(self, _payload: str) -> Tuple[str, str, str]:
-        """process trigger message and return certificate"""
-        self.logger.debug("CAhandler.trigger()")
-
-        error = "Method not implemented."
-        cert_bundle = None
-        cert_raw = None
-
-        self.logger.debug("CAhandler.trigger() ended with error: %s", error)
-        return (error, cert_bundle, cert_raw)
+    def trigger(self, _payload: str) -> Tuple[str, None, None]:
+        """ process trigger message and return certificate """
+        self.logger.debug('CAhandler.trigger()')
+        return ('Method not implemented.', None, None)

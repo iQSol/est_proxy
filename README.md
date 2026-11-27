@@ -12,7 +12,7 @@ is to be modular that an [adaption to other CA servers](docs/ca_handler.md)
 should be straight forward.
 
 As of today the following handler is maintained:
-  - [Microsoft Windows Client Certificate Enrollment Protocol (MS-WCCE) via RPC/DCOM](examples/est_proxy.cfg)
+  - [Microsoft ICertPassage Remote Protocol (MS-ICPR) via RPC](est_proxy/cahandlers/msicpr_ca_handler.py). Load it with `handler_module: est_proxy.cahandlers.msicpr_ca_handler`. Refer to [examples/est_proxy.cfg](examples/est_proxy.cfg).
 
 
 > [!WARNING]

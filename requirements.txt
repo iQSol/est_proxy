@@ -2,6 +2,7 @@ configparser
 tlslite-ng
 pytz
 cryptography
-impacket
+impacket>=0.13.1
+dnspython
 pyrad2
 bcrypt

@@ -442,6 +442,37 @@ foo
         self.assertTrue(self.esthandler.cahandler)
         self.assertEqual('openssl', self.esthandler.openssl_bin)
 
+    @patch('est_proxy.est_handler.config_load')
+    def test_044a_config_load(self, mock_load_cfg):
+        """ test _config_load handler_module loads the msicpr handler """
+        mock_load_cfg.return_value = {'CAhandler': {'handler_module': 'est_proxy.cahandlers.msicpr_ca_handler'}}
+        self.esthandler._config_load()
+        self.assertEqual('est_proxy.cahandlers.msicpr_ca_handler', self.esthandler.cahandler.__module__)
+
+    @patch('est_proxy.est_handler.config_load')
+    def test_044b_config_load(self, mock_load_cfg):
+        """ test _config_load handler_module wins over handler_file """
+        mock_load_cfg.return_value = {'CAhandler': {'handler_module': 'est_proxy.cahandlers.msicpr_ca_handler', 'handler_file': 'examples/ca_handler/skeleton_ca_handler.py'}}
+        self.esthandler._config_load()
+        self.assertEqual('est_proxy.cahandlers.msicpr_ca_handler', self.esthandler.cahandler.__module__)
+
+    @patch('est_proxy.est_handler.config_load')
+    def test_044c_config_load(self, mock_load_cfg):
+        """ test _config_load bad handler_module falls back to the default handler """
+        mock_load_cfg.return_value = {'CAhandler': {'handler_module': 'est_proxy.cahandlers.unknown_ca_handler'}}
+        with self.assertLogs('test_est', level='INFO') as lcm:
+            self.esthandler._config_load()
+        self.assertFalse(self.esthandler.cahandler)
+        self.assertIn("ERROR:test_est:ESTSrvHandler._config_load(): CAhandler est_proxy.cahandlers.unknown_ca_handler could not get loaded. with error: No module named 'est_proxy.cahandlers.unknown_ca_handler'\nLoading default hander...", lcm.output)
+        self.assertIn("ERROR:test_est:ESTSrvHandler._config_load():  Loading default handler failed.", lcm.output)
+
+    @patch('est_proxy.est_handler.config_load')
+    def test_044d_config_load(self, mock_load_cfg):
+        """ test _config_load empty handler_module uses handler_file """
+        mock_load_cfg.return_value = {'CAhandler': {'handler_module': '', 'handler_file': 'examples/ca_handler/skeleton_ca_handler.py'}}
+        self.esthandler._config_load()
+        self.assertEqual('examples.ca_handler.skeleton_ca_handler', self.esthandler.cahandler.__module__)
+
     @patch('est_proxy.est_handler.ESTSrvHandler._auth_check')
     def test_045__post_process(self, mock_auth):
         """ _post_process() - root path """
@@ -544,14 +575,14 @@ foo
         self.assertIn('ERROR:test_est:ESTSrvHandler._cert_enroll(): No error but no cert returned', lcm.output)
 
     def test_053a__cert_enroll(self):
-        """ _cert_enroll() with the mswcce handler and incomplete config returns an error instead of raising """
-        ca_handler_module = importlib.import_module('examples.ca_handler.mswcce_ca_handler')
+        """ _cert_enroll() with the msicpr handler and incomplete config returns an error instead of raising """
+        ca_handler_module = importlib.import_module('est_proxy.cahandlers.msicpr_ca_handler')
         self.esthandler.cfg_file = None
         self.esthandler.user = {'id': 1, 'template': None}
         self.esthandler.cahandler = ca_handler_module.CAhandler
-        self.esthandler.cahandler._config_load = Mock()
-        with self.assertLogs('test_est', level='INFO') as lcm:
-            self.assertEqual(('Config incomplete', None), self.esthandler._cert_enroll('data'))
+        with patch.object(ca_handler_module.CAhandler, '_config_load'):
+            with self.assertLogs('test_est', level='INFO') as lcm:
+                self.assertEqual(('Config incomplete', None), self.esthandler._cert_enroll('data'))
         self.assertIn('ERROR:test_est:ESTSrvHandler._cert_enroll(): Config incomplete', lcm.output)
 
     @patch('est_proxy.est_handler.get_certificate_information')
@@ -1437,7 +1468,7 @@ foo
     # --- config-driven allowed_extensions ([CSRvalidation]) --------------- #
     def test_103a__check_csr_data_eku_allowed_by_config(self):
         """ with keyUsage/EKU/basicConstraints in the allowlist, an EKU CSR is accepted
-            (mirrors the shipped default - the MS-WCCE template overrides it anyway) """
+            (mirrors the shipped default - the Microsoft CA template overrides it anyway) """
         from est_proxy.helper import csr_allowed_extensions
         self._setup_csr_user()
         self.esthandler.csr_allowed_ext = csr_allowed_extensions(

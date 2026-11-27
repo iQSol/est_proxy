@@ -79,4 +79,13 @@ class CAhandler(object):
 ```
 
 You can add additional methods according to your needs. You can also add configuration options to est_proxy.cfg allowing you to configure the ca_handler according to your needs.
-Check the [mswcce_ca_handler.py](../examples/ca_handler/mswcce_ca_handler.py) especially the `_config_load()` method for further details.
+Check the [msicpr_ca_handler.py](../est_proxy/cahandlers/msicpr_ca_handler.py) especially the `_config_load()` method for further details.
+
+## Load a CA handler
+
+Set one of these options in the `CAhandler` section of `est_proxy.cfg`:
+
+- `handler_module`: the Python module path of the handler, for example `est_proxy.cahandlers.msicpr_ca_handler`. Use this option for the handlers that come with est_proxy.
+- `handler_file`: the path to the handler file, for example `examples/ca_handler/skeleton_ca_handler.py`. Use this option for custom handlers.
+
+If you set the two options, est_proxy uses `handler_module`.
